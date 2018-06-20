@@ -6,7 +6,6 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -42,7 +41,8 @@ public class Session implements Closeable {
 	protected final BufferOutputStream out;
 	private boolean flushing;
 	
-	final List<EventHandler> chain;
+	// Handler chain
+	private final HandlerContext head, tail;
 	
 	public Session(SocketChannel chan, EventLoop eventLoop, long id) {
 		this.chan = chan;
@@ -50,7 +50,14 @@ public class Session implements Closeable {
 		this.config = eventLoop.getConfig();
 		this.id     = id;
 		this.name   = "session-"+id;
-		this.chain  = new ArrayList<EventHandler>();
+		
+		// chain
+		this.head   = new HeadContext(this);
+		this.tail   = new TailContext(this);
+		this.head.next = this.tail;
+		this.tail.prev = this.head;
+		
+		// buffers
 		final BufferPool pool = config.getBufferPool();
 		this.in     = new BufferInputStream(chan, pool);
 		this.out    = new BufferOutputStream(chan, pool);
@@ -76,20 +83,33 @@ public class Session implements Closeable {
 	}
 	
 	public Session addHandler(final EventHandler handler) {
-		chain.add(handler);
+		final HandlerContext prev = tail.prev;
+		final HandlerContext cur  = new HandlerContext(this, handler);
+		prev.next = cur;
+		cur.prev  = prev;
+		cur.next  = tail;
+		tail.prev = cur;
 		return this;
 	}
 	
 	public Session addHandlers(final List<EventHandler> handlers) {
-		chain.addAll(handlers);
+		for(final EventHandler handler : handlers){
+			addHandler(handler);
+		}
 		return this;
 	}
 	
 	public Session removeHandler(final EventHandler handler) {
-		for(int i = 0, size = chain.size(); i < size; ++i) {
-			final EventHandler h = chain.get(i);
+		HandlerContext ctx = this.head.next;
+		for(; ctx != this.tail; ctx = ctx.next) {
+			final EventHandler h = ctx.handler();
 			if(h.equals(handler)) {
-				chain.remove(i);
+				final HandlerContext prev = ctx.prev;
+				final HandlerContext next = ctx.next;
+				prev.next = next;
+				next.prev = prev;
+				ctx.prev  = null;
+				ctx.next  = null;
 				break;
 			}
 		}
@@ -152,6 +172,14 @@ public class Session implements Closeable {
 		return this;
 	}
 	
+	public HandlerContext firstContext(){
+		return head;
+	}
+	
+	public HandlerContext lastContext(){
+		return tail;
+	}
+	
 	public final void flush() {
 		flushing = true;
 		if(out.hasRemaining()) {
@@ -160,60 +188,72 @@ public class Session implements Closeable {
 				out.flush();
 			} catch (IOException e) {
 				disableWrite();
-				onCause(e);
+				head.fireCause(e);
 			}
 			return;
 		}
+		disableWrite();
 		flushing = false;
-		onFlushed();
+		head.fireFlushed();
 	}
 	
-	public void onConnected() {
-		try {
-			for(final EventHandler h : chain) {
-				if(!h.onConnected(this)) {
-					break;
-				}
-			}
-		}catch(final Throwable cause) {
-			onCause(cause);
+	static class HeadContext extends HandlerContext {
+		
+		final Session session;
+
+		public HeadContext(Session session) {
+			super(session, new EventHandlerAdapter());
+			this.session = session;
 		}
+		
+		public void fireRead(final Object in){
+			final EventHandler handler = next.handler;
+			if(in == null){
+				handler.onRead(next, session.in);
+				return;
+			}
+			handler.onRead(next, in);
+		}
+		
+	}
+	
+	static class TailContext extends HandlerContext {
+		
+		final Session session;
+		
+		public TailContext(Session session){
+			super(session, new TailHandler());
+			this.session = session;
+		}
+		
+		public void fireWrite(final Object out){
+			if(session.flushing){
+				session.flush();
+				return;
+			}
+			final EventHandler handler = prev.handler;
+			if(out == null){
+				handler.onWrite(prev, session.out);
+				return;
+			}
+			handler.onWrite(prev, out);
+		}
+		
 	}
 
-	public void onRead() {
-		for(final EventHandler h : chain) {
-			if(!h.onRead(this, in)) {
-				break;
-			}
-		}
-	}
+	static class TailHandler extends EventHandlerAdapter {
+		
+		final static Logger log = LoggerFactory.getLogger(TailHandler.class);
 
-	public final void onWrite() {
-		if(flushing) {
-			flush();
-			return;
+		public TailHandler() {
+			
 		}
-		for(final EventHandler h : chain) {
-			if(!h.onWrite(this, out)) {
-				break;
-			}
+		
+		public void onCause(HandlerContext ctx, final Throwable cause) {
+			log.warn("Uncaught exception: close session", cause);
+			ctx.close();
 		}
-	}
-	
-	public void onFlushed() {
-		for(final EventHandler h : chain) {
-			if(!h.onFlushed(this)) {
-				break;
-			}
-		}
-	}
-	
-	public void onCause(Throwable cause) {
-		for(final EventHandler h : chain) {
-			if(!h.onCause(this, cause)) {
-				break;
-			}
-		}
+		
 	}
 
 }

@@ -5,17 +5,17 @@ public interface EventHandler {
 	/**
 	 * A new connection established.
 	 * 
-	 * @param session
+	 * @param ctx handler context
 	 * @return true if call next handler
 	 */
-	boolean onConnected(Session session);
+	void onConnected(HandlerContext ctx);
 	
-	boolean onRead(Session session, BufferInputStream in);
+	void onRead(HandlerContext ctx, Object in);
 
-	boolean onWrite(Session session, BufferOutputStream out);
+	void onWrite(HandlerContext ctx, Object out);
 	
-	boolean onFlushed(Session session);
+	void onFlushed(HandlerContext ctx);
 
-	boolean onCause(Session session, Throwable cause);
+	void onCause(HandlerContext ctx, Throwable cause);
 
 }

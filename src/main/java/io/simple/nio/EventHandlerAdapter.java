@@ -1,40 +1,27 @@
 package io.simple.nio;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.simple.util.IoUtil;
-
 public class EventHandlerAdapter implements EventHandler {
-	
-	final static Logger log = LoggerFactory.getLogger(EventHandlerAdapter.class);
 	
 	protected EventHandlerAdapter() {}
 
-	public boolean onConnected(Session session) {
-		
-		return true;
+	public void onConnected(HandlerContext ctx) {
+		ctx.fireConnected();
 	}
 
-	public boolean onRead(Session session, BufferInputStream in) {
-		
-		return true;
+	public void onRead(HandlerContext ctx, Object in) {
+		ctx.fireRead(in);
 	}
 
-	public boolean onWrite(Session session, BufferOutputStream out) {
-		
-		return true;
+	public void onWrite(HandlerContext ctx, Object out) {
+		ctx.fireWrite(out);
 	}
 
-	public boolean onFlushed(Session session) {
-		
-		return true;
+	public void onFlushed(HandlerContext ctx) {
+		ctx.fireFlushed();
 	}
 
-	public boolean onCause(Session session, Throwable cause) {
-		log.warn("Error occurs: close session", cause);
-		IoUtil.close(session);
-		return true;
+	public void onCause(HandlerContext ctx, Throwable cause) {
+		ctx.fireCause(cause);
 	}
 
 }

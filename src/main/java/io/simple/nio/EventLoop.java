@@ -263,7 +263,7 @@ public class EventLoop {
 			}
 			try {
 				if(sess.isOpen()) {
-					sess.onCause(cause);
+					sess.firstContext().fireCause(cause);
 				}
 			} catch(final Throwable e) {
 				log.warn("onCause() handler error: close session", e);
@@ -323,17 +323,17 @@ public class EventLoop {
 				return;
 			}
 			
-			sess.onConnected();
+			sess.firstContext().fireConnected();
 		}
 		
 		void onRead(SelectionKey key) {
 			final Session sess = (Session)key.attachment();
-			sess.onRead();
+			sess.firstContext().fireRead(null);
 		}
 		
 		void onWrite(SelectionKey key) {
 			final Session sess = (Session)key.attachment();
-			sess.onWrite();
+			sess.lastContext().fireWrite(null);
 		}
 		
 	}

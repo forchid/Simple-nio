@@ -11,6 +11,7 @@ import io.simple.nio.BufferOutputStream;
 import io.simple.nio.Configuration;
 import io.simple.nio.EventHandlerAdapter;
 import io.simple.nio.EventLoop;
+import io.simple.nio.HandlerContext;
 import io.simple.nio.Session;
 
 public class EchoClient extends EventHandlerAdapter {
@@ -35,16 +36,17 @@ public class EchoClient extends EventHandlerAdapter {
 	public EchoClient() {}
 	
 	@Override
-	public boolean onConnected(Session session) {
-		session.enableWrite();
+	public void onConnected(HandlerContext ctx) {
+		ctx.enableWrite();
 		ts = System.currentTimeMillis();
-		log.debug("{}: connected", session);
-		return false;
+		log.debug("{}: connected", ctx.session());
 	}
 	
 	@Override
-	public boolean onRead(Session session, BufferInputStream in) {
+	public void onRead(HandlerContext ctx, Object o) {
+		final Session session = ctx.session();
 		try {
+			final BufferInputStream in = (BufferInputStream)o;
 			int n = in.available();
 			log.debug("{}: avalable bytes {}", session, n);
 			if(n < buf.length) {
@@ -53,11 +55,11 @@ public class EchoClient extends EventHandlerAdapter {
 					if(in.read() == -1) {
 						showTps(session);
 						session.close();
-						return false;
+						return;
 					}
 					in.reset();
 				}
-				return false;
+				return;
 			}
 			final byte[] buffer = new byte[buf.length];
 			final int i = in.read(buffer);
@@ -67,34 +69,34 @@ public class EchoClient extends EventHandlerAdapter {
 			bytes += buf.length;
 			++tps;
 		} catch (IOException e) {
-			onCause(session, e);
+			onCause(ctx, e);
 		}
-		return false;
 	}
 	
 	@Override
-	public boolean onWrite(Session session, BufferOutputStream out) {
+	public void onWrite(HandlerContext ctx, Object o) {
 		try {
+			final BufferOutputStream out = (BufferOutputStream)o;
 			out.write(buf);
-			session.flush();
-			log.debug("{}: write buffer", session);
+			ctx.flush();
+			log.debug("{}: write buffer", ctx.session());
 		} catch (final IOException e) {
-			onCause(session, e);
+			onCause(ctx, e);
 		}
-		return false;
 	}
 	
 	@Override
-	public boolean onFlushed(Session session) {
+	public void onFlushed(HandlerContext ctx) {
+		final Session session = ctx.session();
 		log.debug("{}: flushed bytes {}", session, buf.length);
 		bytes += buf.length;
 		final long tm = System.currentTimeMillis() - ts;
 		if(tm > 60000L) {
 			showTps(session);
 			session.close();
-			return false;
+			return;
 		}
-		return false;
+		ctx.enableWrite();
 	}
 	
 	void showTps(Session session) {

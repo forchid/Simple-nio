@@ -10,6 +10,7 @@ import io.simple.nio.BufferOutputStream;
 import io.simple.nio.Configuration;
 import io.simple.nio.EventHandlerAdapter;
 import io.simple.nio.EventLoop;
+import io.simple.nio.HandlerContext;
 import io.simple.nio.Session;
 
 public class EchoServer extends EventHandlerAdapter {
@@ -21,9 +22,16 @@ public class EchoServer extends EventHandlerAdapter {
 	
 	byte[] buf;
 	int pos, count;
+	
+	public void onConnected(HandlerContext ctx){
+		Session session = ctx.session();
+		log.debug("{}: connected", session);
+	}
 
-	public boolean onRead(Session session, BufferInputStream in) {
+	public void onRead(HandlerContext ctx, Object o) {
+		final Session session = ctx.session();
 		try {
+			final BufferInputStream in = (BufferInputStream)o;
 			int n = in.available();
 			log.debug("{}: recv bytes {} ->", session, n);
 			if(n == 0) {
@@ -32,10 +40,10 @@ public class EchoServer extends EventHandlerAdapter {
 				if(b == -1) {
 					log.info("{}: Client closed", session);
 					session.close();
-					return false;
+					return;
 				}
 				in.reset();
-				return false;
+				return;
 			}
 			buf = new byte[n];
 			count = in.read(buf);
@@ -46,26 +54,26 @@ public class EchoServer extends EventHandlerAdapter {
 			session.disableRead();
 			session.enableWrite();
 		} catch (IOException e) {
-			onCause(session, e);
+			onCause(ctx, e);
 		}
-		return false;
 	}
 
-	public boolean onWrite(Session session, BufferOutputStream out) {
+	public void onWrite(HandlerContext ctx, Object o) {
+		final Session session = ctx.session();
 		try {
+			final BufferOutputStream out = (BufferOutputStream)o;
 			out.write(buf, pos, count);
 			session.flush();
 		} catch (IOException e) {
-			onCause(session, e);
+			onCause(ctx, e);
 		}
-		return false;
 	}
 
-	public boolean onFlushed(Session session) {
+	public void onFlushed(HandlerContext ctx) {
+		final Session session = ctx.session();
 		log.debug("{}: flush bytes {}", session, count);
 		session.disableWrite();
 		session.enableRead();
-		return false;
 	}
 	
 	public static void main(String args[]) {

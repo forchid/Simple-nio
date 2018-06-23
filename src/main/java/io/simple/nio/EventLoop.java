@@ -39,7 +39,6 @@ public class EventLoop {
 		try {
 			ssChan   = openServerChan(config);
 			selector = openSelector(config);
-			postConnRequest(config);
 			final String name = config.getName();
 			this.selLoop = new SelectLoop(this, selector, ssChan);
 			final Thread selThread   = new Thread(selLoop, name);
@@ -65,6 +64,13 @@ public class EventLoop {
 	public EventLoop shutdown() {
 		this.shutdown = true;
 		return this;
+	}
+	
+	/**
+	 * Connect to remote host using the host and port of the configuration.
+	 */
+	public void connect() {
+		connect(config.getHost(), config.getPort());
 	}
 	
 	public void connect(final String remoteHost, int remotePort) {
@@ -99,15 +105,6 @@ public class EventLoop {
 				IoUtil.close(chan);
 			}
 		}
-	}
-	
-	final void postConnRequest(Configuration config) {
-		if(config.getServerHandlers().size() > 0) {
-			return;
-		}
-		final String host = config.getHost();
-		final int port = config.getPort();
-		connReqQueue.add(new InetSocketAddress(host, port));
 	}
 	
 	final static SocketChannel openSocketChan(Selector selector, final SocketAddress remote) {
@@ -263,7 +260,7 @@ public class EventLoop {
 			}
 			try {
 				if(sess.isOpen()) {
-					sess.firstContext().fireCause(cause);
+					sess.fireCause(cause);
 				}
 			} catch(final Throwable e) {
 				log.warn("onCause() handler error: close session", e);
@@ -323,17 +320,17 @@ public class EventLoop {
 				return;
 			}
 			
-			sess.firstContext().fireConnected();
+			sess.fireConnected();
 		}
 		
 		void onRead(SelectionKey key) {
 			final Session sess = (Session)key.attachment();
-			sess.firstContext().fireRead(null);
+			sess.fireRead();
 		}
 		
 		void onWrite(SelectionKey key) {
 			final Session sess = (Session)key.attachment();
-			sess.lastContext().fireWrite(null);
+			sess.fireWrite();
 		}
 		
 	}

@@ -2,6 +2,7 @@ package io.simple.nio;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -172,14 +173,85 @@ public class Session implements Closeable {
 		return this;
 	}
 	
-	public HandlerContext firstContext(){
-		return head;
+	public Session fireConnected(){
+		head.fireConnected();
+		return this;
 	}
 	
-	public HandlerContext lastContext(){
-		return tail;
+	public Session fireRead() {
+		head.fireRead(in);
+		return this;
 	}
 	
+	public Session fireWrite(){
+		tail.fireWrite(out);
+		return this;
+	}
+	
+	public Session fireCause(Throwable cause) {
+		head.fireCause(cause);
+		return this;
+	}
+	
+	/**
+	 * Write byte array into output stream.
+	 * @param b
+	 * @return this session
+	 */
+	public Session write(byte b[]) {
+		out.write(b);
+		return this;
+	}
+	
+	/**
+	 * Write byte array into output stream.
+	 * 
+	 * @param b
+	 * @param off
+	 * @param len
+	 * 
+	 * @return this session
+	 */
+	public Session write(byte b[], int off, int len) {
+		out.write(b, off, len);
+		return this;
+	}
+	
+	/**
+	 * Write byte buffer into output buffer stream.
+	 * 
+	 * @param buf
+	 * @return this session
+	 */
+	public Session write(ByteBuffer buf) {
+		for(;buf.hasRemaining();) {
+			out.write(buf.get());
+		}
+		return this;
+	}
+	
+	/**
+	 * Write byte buffer into output buffer stream.
+	 * 
+	 * @param buf
+	 * @param off
+	 * @param len
+	 * 
+	 * @return this session
+	 */
+	public Session write(ByteBuffer buf, int off, int len) {
+		for(;off < len;) {
+			out.write(buf.get(off++));
+		}
+		return this;
+	}
+	
+	/**
+	 * <p>
+	 * Flush output buffer stream into the socket channel. First enable channel write, then
+	 * flush stream, and disable channel write after flushing completely.
+	 * </p>
+	 */
 	public final void flush() {
 		flushing = true;
 		if(out.hasRemaining()) {

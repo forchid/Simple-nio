@@ -9,15 +9,15 @@ import java.io.IOException;
  * @since 2018-06-17
  *
  */
-public class IOPendingException extends IOException {
+public class PendingIOException extends IOException {
 
 	private static final long serialVersionUID = 1286505817151812529L;
 
-	public IOPendingException() {
+	public PendingIOException() {
 		this("IO pending");
 	}
 	
-	public IOPendingException(String message) {
+	public PendingIOException(String message) {
 		super(message);
 	}
 

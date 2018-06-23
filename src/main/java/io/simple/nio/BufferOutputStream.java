@@ -28,7 +28,7 @@ public class BufferOutputStream extends OutputStream {
 	}
 	
 	@Override
-	public void write(int b) throws IOException {
+	public void write(int b) {
 		headBuffer().put((byte)b);
 		++remaining;
 	}
@@ -52,12 +52,12 @@ public class BufferOutputStream extends OutputStream {
 	}
 	
 	@Override
-	public void write(byte b[]) throws IOException {
+	public void write(byte b[]) {
         write(b, 0, b.length);
     }
 	
 	@Override
-	public void write(byte b[], int off, int len) throws IOException {
+	public void write(byte b[], int off, int len) {
         if (b == null) {
             throw new NullPointerException();
         } else if ((off < 0) || (off > b.length) || (len < 0) ||

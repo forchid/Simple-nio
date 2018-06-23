@@ -1,6 +1,7 @@
 package io.simple.nio;
 
 import java.io.Closeable;
+import java.nio.ByteBuffer;
 
 /**
  * The event handler context.
@@ -54,6 +55,61 @@ public class HandlerContext implements Closeable {
 		return this;
 	}
 	
+	/**
+	 * Write byte array into output stream.
+	 * @param b
+	 * @return this context
+	 */
+	public HandlerContext write(byte b[]) {
+		session.write(b);
+		return this;
+	}
+	
+	/**
+	 * Write byte array into output stream.
+	 * 
+	 * @param b
+	 * @param off
+	 * @param len
+	 * 
+	 * @return this context
+	 */
+	public HandlerContext write(byte b[], int off, int len) {
+		session.write(b, off, len);
+		return this;
+	}
+	
+	/**
+	 * Write byte buffer into output buffer stream.
+	 * 
+	 * @param buf
+	 * @return this context
+	 */
+	public HandlerContext write(ByteBuffer buf) {
+		session.write(buf);
+		return this;
+	}
+	
+	/**
+	 * Write byte buffer into output buffer stream.
+	 * 
+	 * @param buf
+	 * @param off
+	 * @param len
+	 * 
+	 * @return this context
+	 */
+	public HandlerContext write(ByteBuffer buf, int off, int len) {
+		session.write(buf, off, len);
+		return this;
+	}
+
+	/**
+	 * <p>
+	 * Flush output buffer stream into the socket channel.
+	 * Please see {@link Session#flush()} method.
+	 * </p>
+	 */
 	public HandlerContext flush() {
 		session.flush();
 		return this;

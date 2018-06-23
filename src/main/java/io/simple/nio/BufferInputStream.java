@@ -7,8 +7,17 @@ import java.nio.channels.SocketChannel;
 import java.util.LinkedList;
 
 /**
+ * <p>
  * A buffer backed input stream, which supports mark and reset operations 
  *in local buffer pool.
+ * </p>
+ * 
+ * <p>
+ * <b>Note: </b> the {@link #read()} method throws {@link PendingIOException} 
+ * when no one byte readable, in order to keep compatible with {@link java.io.InputStream}.
+ * So suggest using the {@link #available()} method to get readable byte number, then using
+ * {@link #read(byte[], int, int)} method to read byte data.
+ * </p>
  * 
  * @author little-pan
  * @since 2018-06-17
@@ -35,8 +44,8 @@ public class BufferInputStream extends InputStream {
 	}
 	
 	/**
-	 * @throws io.simple.nio.IOPendingException 
-	 *  if no byte can be readable
+	 * @throws io.simple.nio.PendingIOException 
+	 *  if no byte readable
 	 */
 	@Override
 	public int read() throws IOException {
@@ -59,7 +68,7 @@ public class BufferInputStream extends InputStream {
 				}
 				if(i == 0) {
 					// no byte readable!
-					throw new IOPendingException();
+					throw new PendingIOException();
 				}
 				available += i;
 			}
@@ -108,22 +117,22 @@ public class BufferInputStream extends InputStream {
 
 	@Override
 	public long skip(long n) throws IOException {
-        long remaining = Math.min(n, available());
-        if (remaining <= 0L) {
+        long rem = Math.min(n, available());
+        if (rem <= 0L) {
             return 0L;
         }
 
-        final int size = (int)Math.min(MAX_SKIP_BUFFER_SIZE, remaining);
+        final int size = (int)Math.min(MAX_SKIP_BUFFER_SIZE, rem);
         final byte[] skipBuffer = new byte[size];
-        while (remaining > 0) {
-            final int nr = read(skipBuffer, 0, (int)Math.min(size, remaining));
+        for (; rem > 0; ) {
+            final int nr = read(skipBuffer, 0, (int)Math.min(size, rem));
             if (nr < 0) {
                 break;
             }
-            remaining -= nr;
+            rem -= nr;
         }
 
-        return n - remaining;
+        return n - rem;
     }
 	
 	@Override

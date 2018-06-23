@@ -4,11 +4,13 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -23,12 +25,21 @@ public class EventLoop {
 	final static Logger log = LoggerFactory.getLogger(EventLoop.class);
 	
 	protected final Configuration config;
-	// state
+	
+	// state management
 	private volatile boolean shutdown;
-	final SelectLoop selLoop;
-	private final Queue<SocketAddress> connReqQueue;
+	private volatile boolean stop;
+	private final SelectorLoop selLoop;
+	private final Thread selThread;
+	
+	// connection queue
+	private final Queue<SocketAddress> externConnReqQueue;
 	{
-		connReqQueue = new ConcurrentLinkedQueue<SocketAddress>();
+		externConnReqQueue = new ConcurrentLinkedQueue<SocketAddress>();
+	}
+	private final Queue<SocketAddress> internConnReqQueue;
+	{
+		internConnReqQueue = new LinkedList<SocketAddress>();
 	}
 	
 	public EventLoop(final Configuration config) {
@@ -40,8 +51,8 @@ public class EventLoop {
 			ssChan   = openServerChan(config);
 			selector = openSelector(config);
 			final String name = config.getName();
-			this.selLoop = new SelectLoop(this, selector, ssChan);
-			final Thread selThread   = new Thread(selLoop, name);
+			this.selLoop = new SelectorLoop(this, selector, ssChan);
+			this.selThread = new Thread(selLoop, name);
 			selThread.setDaemon(config.isDaemon());
 			selThread.start();
 			failed = false;
@@ -61,9 +72,17 @@ public class EventLoop {
 		return shutdown;
 	}
 	
+	public boolean isStop(){
+		return stop;
+	}
+	
 	public EventLoop shutdown() {
 		this.shutdown = true;
 		return this;
+	}
+	
+	public final boolean inEventLoop(){
+		return (Thread.currentThread() == selThread);
 	}
 	
 	/**
@@ -78,7 +97,11 @@ public class EventLoop {
 	}
 	
 	public void connect(final SocketAddress remote) {
-		connReqQueue.add(remote);
+		if(inEventLoop()){
+			internConnReqQueue.add(remote);
+			return;
+		}
+		externConnReqQueue.add(remote);
 		selLoop.selector.wakeup();
 	}
 	
@@ -116,14 +139,14 @@ public class EventLoop {
 			chan.register(selector, SelectionKey.OP_CONNECT);
 			chan.connect(remote);
 			failed = false;
-			return chan;
 		} catch (final IOException e) {
-			throw new RuntimeException(e);
+			log.warn("Can't open channel to "+remote, e);
 		} finally {
 			if(failed) {
 				IoUtil.close(chan);
 			}
 		}
+		return chan;
 	}
 	
 	protected static Selector openSelector(final Configuration config) {
@@ -134,8 +157,8 @@ public class EventLoop {
 		}
 	}
 	
-	// The selector execute loop.
-	final static class SelectLoop implements Runnable {
+	// Selector execute loop.
+	final static class SelectorLoop implements Runnable {
 		
 		final EventLoop eventLoop;
 		final Configuration config;
@@ -143,16 +166,18 @@ public class EventLoop {
 		private ServerSocketChannel ssChan;
 		private Selector selector;
 		
-		private Session sessions[];
-		private long nextSessionId;
-		private int maxIndex;
+		private SessionManager serverSessManager;
+		private SessionManager clientSessManager;
 		
-		SelectLoop(EventLoop eventLoop, Selector selector, ServerSocketChannel ssChan){
+		SelectorLoop(EventLoop eventLoop, Selector selector, ServerSocketChannel ssChan){
 			this.eventLoop = eventLoop;
 			this.config    = eventLoop.config;
 			this.ssChan    = ssChan;
 			this.selector  = selector;
-			this.sessions  = new Session[eventLoop.config.getMaxConns()];
+			this.serverSessManager = new SessionManager(eventLoop, selector, 
+					"serverSess", (ssChan==null)?0:config.getMaxServerConns(), config.getServerHandlers());
+			this.clientSessManager = new SessionManager(eventLoop, selector, 
+					"clientSess", config.getMaxClientConns(), config.getClientHandlers());
 		}
 
 		public void run() {
@@ -168,11 +193,13 @@ public class EventLoop {
 							IoUtil.close(ssChan);
 							log.info("Shutdown");
 						}
-						if(isOver()) {
+						if(isCompleted()) {
 							break;
 						}
 					}
-					handleConnReqs();
+					
+					handleConnRequests();
+					
 					// do-select
 					final int events = selector.select();
 					if(events > 0) {
@@ -185,13 +212,13 @@ public class EventLoop {
 							}
 							
 							if(key.isAcceptable()) {
-								onConnect(ssChan.accept(), true);
+								onServerConnect(ssChan);
 								continue;
 							}
 							
 							try {
 								if(key.isConnectable()) {
-									onConnect((SocketChannel)key.channel(), false);
+									onClientConnect(key);
 									continue;
 								}
 								
@@ -209,7 +236,9 @@ public class EventLoop {
 					}
 				}
 			} catch(final IOException e) {
-				log.error("Selector loop error", e);
+				log.error("Selector loop severe error", e);
+			} finally {
+				eventLoop.stop = true;
 			}
 			
 			log.info("Stopped: uptime %ds", (System.currentTimeMillis() -ts)/1000);
@@ -224,8 +253,17 @@ public class EventLoop {
 			} catch (ClosedChannelException e) {}
 		}
 		
-		final void handleConnReqs() {
-			final Queue<SocketAddress> queue = eventLoop.connReqQueue;
+		final void handleConnRequests() {
+			Queue<SocketAddress> queue = eventLoop.externConnReqQueue;
+			for(;;) {
+				final SocketAddress remote = queue.poll();
+				if(remote == null) {
+					break;
+				}
+				openSocketChan(selector, remote);
+			}
+			
+			queue = eventLoop.internConnReqQueue;
 			for(;;) {
 				final SocketAddress remote = queue.poll();
 				if(remote == null) {
@@ -235,25 +273,25 @@ public class EventLoop {
 			}
 		}
 		
-		boolean isOver() {
-			for(int i = 0; i < maxIndex; ++i) {
-				final Session sess = sessions[i];
-				if(sess != null && sess.isOpen()) {
-					return false;
-				}
-				sessions[i] = null;
-			}
-			return true;
+		boolean isCompleted() {
+			return (serverSessManager.isCompleted() && clientSessManager.isCompleted());
 		}
 		
 		void onUncaught(SelectionKey selKey, final Throwable cause) {
-			final Session sess = (Session)selKey.attachment();
+			final Object attach = selKey.attachment();
+			if(attach == null){
+				final SelectableChannel chan = selKey.channel();
+				IoUtil.close(chan);
+				log.warn("Uncaught exception occurs", cause);
+				return;
+			}
+			final Session sess = (Session)attach;
 			final StackTraceElement[] stack = cause.getStackTrace();
 			for(int j = 0, size = stack.length; j < size; ++j) {
 				final StackTraceElement e = stack[j];
 				final boolean isSub = Session.class.isAssignableFrom(e.getClass());
 				if(isSub && Session.ON_CAUSE.equals(e.getMethodName())){
-					log.warn("Event handler error: close session", cause);
+					log.warn("Event handler uncaught error", cause);
 					IoUtil.close(sess);
 					break;
 				}
@@ -263,64 +301,42 @@ public class EventLoop {
 					sess.fireCause(cause);
 				}
 			} catch(final Throwable e) {
-				log.warn("onCause() handler error: close session", e);
+				log.warn("onCause() handler error", e);
 				IoUtil.close(sess);
 			}
 		}
 		
-		void onConnect(SocketChannel chan, final boolean server) {
-			final int maxConns = sessions.length;
-			if(maxIndex >= maxConns) {
-				IoUtil.close(chan);
-				log.warn("Reject a new connection: Conns exceeds maxConns "+maxConns);
+		void onServerConnect(final ServerSocketChannel ssChan){
+			SocketChannel chan = null;
+			boolean failed = true;
+			try{
+				chan = ssChan.accept();
+				if(chan == null){
+					return;
+				}
+				chan.configureBlocking(false);
+				failed = false;
+			}catch(final IOException e){
+				log.warn("Accept channel error", e);
 				return;
-			}
-			Session sess = null;
-			for(int i = 0; i < maxConns; ++i) {
-				sess = sessions[i];
-				if(sess == null || !sess.isOpen()) {
-					sessions[i] = sess = new Session(chan, eventLoop, nextSessionId++);
-					sess.setSelector(selector);
-					if(i >= maxIndex) {
-						++maxIndex;
-					}
-					break;
+			}finally{
+				if(failed){
+					IoUtil.close(chan);
 				}
-			}
-			try {
-				if(server) {
-					chan.configureBlocking(false);
-				}
-				if(config.isAutoRead()) {
-					sess.enableRead();
-				}
-				if(!server) {
-					chan.finishConnect();
-				}
-			} catch (final IOException cause) {
-				log.warn("Init session error: close session", cause);
-				IoUtil.close(sess);
-				return;
 			}
 			
-			try {
-				final List<Class<? extends EventHandler>> handlers;
-				if(server) {
-					handlers = config.getServerHandlers();
-				}else {
-					handlers = config.getClientHandlers();
-				}
-				for(final Class<? extends EventHandler> c : handlers) {
-					final EventHandler handler = ReflectUtil.newObject(c);
-					sess.addHandler(handler);
-				}
-			}catch(final Throwable cause) {
-				log.warn("Add event handler error", cause);
-				IoUtil.close(sess);
-				return;
+			final Session sess = serverSessManager.newSession(chan);
+			if(sess != null){
+				sess.fireConnected();
 			}
-			
-			sess.fireConnected();
+		}
+		
+		void onClientConnect(final SelectionKey key) {
+			final SocketChannel chan = (SocketChannel)key.channel();
+			final Session sess = clientSessManager.newSession(chan);
+			if(sess != null){
+				sess.fireConnected();
+			}
 		}
 		
 		void onRead(SelectionKey key) {
@@ -331,6 +347,97 @@ public class EventLoop {
 		void onWrite(SelectionKey key) {
 			final Session sess = (Session)key.attachment();
 			sess.fireWrite();
+		}
+		
+	}
+	
+	// Session pool manager.
+	final static class SessionManager {
+		
+		final EventLoop eventLoop;
+		final Selector selector;
+		final String name;
+		
+		private final Session sessions[];
+		private long nextSessionId;
+		private int maxIndex;
+		final List<Class<? extends EventHandler>> handlers;
+		
+		public SessionManager(EventLoop eventLoop, Selector selector, 
+				String name, int maxConns, List<Class<? extends EventHandler>> handlers){
+			this.eventLoop = eventLoop;
+			this.selector  = selector;
+			this.name      = name;
+			this.sessions  = new Session[maxConns];
+			this.handlers  = handlers;
+		}
+		
+		public boolean isCompleted() {
+			for(int i = 0; i < maxIndex; ++i){
+				final Session sess = sessions[i];
+				if(sess != null && sess.isOpen()){
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/**
+		 * Create a session for socket channel.
+		 * 
+		 * @param chan
+		 * 
+		 * @return the session, or null if failed
+		 */
+		public Session newSession(final SocketChannel chan){
+			final Configuration config = eventLoop.config;
+			Session sess = null;
+			try {
+				sess = new Session(name, nextSessionId++, chan, eventLoop);
+				for(final Class<? extends EventHandler> c : handlers) {
+					final EventHandler handler = ReflectUtil.newObject(c);
+					sess.addHandler(handler);
+				}
+			}catch(final Throwable cause) {
+				log.error("Add event handler error", cause);
+				IoUtil.close(sess);
+				return null;
+			}
+			
+			try {
+				if(chan.isConnectionPending()){
+					chan.finishConnect();
+				}
+				sess.setSelector(selector);
+				if(config.isAutoRead()) {
+					sess.enableRead();
+				}
+			} catch (final IOException cause) {
+				sess.fireCause(cause);
+				return null;
+			}
+			
+			final int maxConns = sessions.length;
+			if(maxIndex >= maxConns) {
+				final String reason = String
+					.format("%s allocation exceeds maxConns %d", name, maxConns);
+				sess.fireCause(new SessionAllocateException(reason));
+				return null;
+			}
+			
+			for(int i = 0; i < maxConns; ++i) {
+				final Session s = sessions[i];
+				if(s == null || !s.isOpen()) {
+					sessions[i] = sess;
+					if(i >= maxIndex) {
+						++maxIndex;
+					}
+					log.debug("{}: allocate a session success at sessions[{}] - maxIndex = {}",
+							                                                name, i, maxIndex);
+					break;
+				}
+			}
+			return sess;
 		}
 		
 	}

@@ -25,7 +25,7 @@ public class LinkedBufferPool implements BufferPool {
 		this.bufferSize = bufferSize;
 		this.pool       = new LinkedList<Buffer>();
 		if(poolSize <= 0L) {
-			throw new IllegalArgumentException("poolSize must be bigger than 0: " + poolSize);
+			throw new IllegalArgumentException("poolSize must bigger than 0: " + poolSize);
 		}
 		log.debug("{}: poolSize = {}, bufferSize = {}", this, poolSize, bufferSize);
 	}
@@ -34,7 +34,7 @@ public class LinkedBufferPool implements BufferPool {
 		Buffer buffer = pool.poll();
 		if(buffer != null) {
 			if(log.isDebugEnabled()) {
-				log.debug("{}: Allocate a buffer from pool: buffer#{} {}", this, buffer.hashCode(), buffer);
+				log.debug("{}: Allocate a buffer from pool - buffer#{} {}", this, buffer.hashCode(), buffer);
 			}
 			buffer.onAlloc();
 			pooledSize -= bufferSize;
@@ -43,12 +43,12 @@ public class LinkedBufferPool implements BufferPool {
 		if(curSize + bufferSize > poolSize) {
 			throw new BufferAllocateException("Exceeds pool size limit");
 		}
-		ByteBuffer buf = ByteBuffer.allocateDirect(bufferSize);
+		final ByteBuffer buf = ByteBuffer.allocateDirect(bufferSize);
 		curSize += bufferSize;
 		buffer   = new Buffer(this, buf);
 		buffer.onAlloc();
 		if(log.isDebugEnabled()) {
-			log.debug("{}: Allocate a buffer from VM: buffer#{} {}", this, buffer.hashCode(), buffer);
+			log.debug("{}: Allocate a buffer from VM - buffer#{} {}", this, buffer.hashCode(), buffer);
 		}
 		return buffer;
 	}
@@ -60,11 +60,11 @@ public class LinkedBufferPool implements BufferPool {
 			curSize    -= bufferSize;
 			pooledSize += bufferSize;
 			if(log.isDebugEnabled()) {
-				log.debug("{}: Release a buffer into pool: buffer#{} {}", this, buffer.hashCode(), buffer);
+				log.debug("{}: Release a buffer into pool - buffer#{} {}", this, buffer.hashCode(), buffer);
 			}
 			return;
 		}
-		log.warn("{}: Can't release buffer: {}", this, buffer);
+		log.warn("{}: buffer not allocated from this pool - {}", this, buffer);
 	}
 	
 	public long available() {

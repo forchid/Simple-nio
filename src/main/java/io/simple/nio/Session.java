@@ -37,7 +37,7 @@ public class Session implements Closeable {
 	// Base resources
 	protected Selector selector;
 	protected SelectionKey selectKey;
-	protected final SocketChannel chan;
+	protected SocketChannel chan;
 	protected final BufferInputStream  in;
 	protected final BufferOutputStream out;
 	private boolean flushing;
@@ -45,12 +45,12 @@ public class Session implements Closeable {
 	// Handler chain
 	private final HandlerContext head, tail;
 	
-	public Session(SocketChannel chan, EventLoop eventLoop, long id) {
+	public Session(String namePrefix, long id, SocketChannel chan, EventLoop eventLoop) {
 		this.chan = chan;
 		this.eventLoop = eventLoop;
 		this.config = eventLoop.getConfig();
 		this.id     = id;
-		this.name   = "session-"+id;
+		this.name   = String.format("%s-%d", namePrefix, id);
 		
 		// chain
 		this.head   = new HeadContext(this);
@@ -65,7 +65,7 @@ public class Session implements Closeable {
 	}
 	
 	public boolean isOpen() {
-		return chan.isOpen();
+		return (chan != null && chan.isOpen());
 	}
 	
 	public void close() {
@@ -74,6 +74,7 @@ public class Session implements Closeable {
 			IoUtil.close(in);
 			IoUtil.close(out);
 			IoUtil.close(chan);
+			chan = null;
 			log.debug("{}: closed", this);
 		}
 	}
@@ -322,7 +323,7 @@ public class Session implements Closeable {
 		}
 		
 		public void onCause(HandlerContext ctx, final Throwable cause) {
-			log.warn("Uncaught exception: close session", cause);
+			log.warn("Close session for uncaught exception", cause);
 			ctx.close();
 		}
 		

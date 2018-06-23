@@ -20,7 +20,7 @@ public class SimpleBufferPool implements BufferPool {
 		this.poolSize   = poolSize;
 		this.bufferSize = bufferSize;
 		if(poolSize <= 0L) {
-			throw new IllegalArgumentException("poolSize must be bigger than 0: " + poolSize);
+			throw new IllegalArgumentException("poolSize must bigger than 0: " + poolSize);
 		}
 		log.debug("{}: poolSize = {}, bufferSize = {}", this, poolSize, bufferSize);
 	}
@@ -33,7 +33,7 @@ public class SimpleBufferPool implements BufferPool {
 		curSize += bufferSize;
 		final Buffer buffer = new Buffer(this, buf);
 		buffer.onAlloc();
-		log.debug("{}: Allocate a buffer from VM: {}", this, buffer);
+		log.debug("{}: Allocate a buffer from VM - {}", this, buffer);
 		return buffer;
 	}
 
@@ -41,10 +41,10 @@ public class SimpleBufferPool implements BufferPool {
 		if(buffer.bufferPool() == this) {
 			buffer.onRelease();
 			curSize -= bufferSize;
-			log.debug("{}: Release a buffer into VM: {}", this, buffer);
+			log.debug("{}: Release a buffer into VM - {}", this, buffer);
 			return;
 		}
-		log.warn("{}: Can't release buffer: {}", this, buffer);
+		log.warn("{}: buffer not allocated from this pool - {}", this, buffer);
 	}
 	
 	public long available() {

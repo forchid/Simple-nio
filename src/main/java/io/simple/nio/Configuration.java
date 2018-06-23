@@ -12,7 +12,7 @@ public class Configuration {
 	private String host  = "0.0.0.0";
 	private int port     = 9696;
 	private int backlog  = 1024;
-	private int maxConns = 10240;
+	private int maxConns = 10240, maxServerConns, maxClientConns;
 	
 	private boolean autoRead     = true;
 	private boolean bufferDirect = true;
@@ -50,6 +50,14 @@ public class Configuration {
 	
 	public int getMaxConns() {
 		return maxConns;
+	}
+	
+	public int getMaxClientConns() {
+		return maxClientConns;
+	}
+
+	public int getMaxServerConns() {
+		return maxServerConns;
 	}
 	
 	public boolean isAutoRead() {
@@ -117,8 +125,22 @@ public class Configuration {
 			return this;
 		}
 		
+		/**
+		 * @param maxConns
+		 * @return the default max connections for server or client
+		 */
 		public Builder setMaxConns(int maxConns) {
 			config.maxConns = maxConns;
+			return this;
+		}
+		
+		public Builder setMaxServerConns(int maxServerConns) {
+			config.maxServerConns = maxServerConns;
+			return this;
+		}
+		
+		public Builder setMaxClientConns(int maxClientConns) {
+			config.maxClientConns = maxClientConns;
 			return this;
 		}
 		
@@ -163,14 +185,25 @@ public class Configuration {
 		}
 		
 		public Configuration build() {
-			if(config.maxConns < 1) {
-				throw new IllegalArgumentException("maxConns must be bigger than 0: "+config.maxConns);
+			final int maxConns = config.maxConns;
+			if(maxConns < 1) {
+				throw new IllegalArgumentException("maxConns must bigger than 0: "+config.maxConns);
 			}
+			if(config.maxServerConns <= 0){
+				config.maxServerConns = maxConns;
+			}
+			if(config.maxClientConns <= 0){
+				config.maxClientConns = maxConns;
+			}
+			
+			final long poolSize = config.poolSize;
+			final int bufferSize= config.bufferSize;
 			if(config.isBufferDirect()) {
-				config.bufferPool = new LinkedBufferPool(config.poolSize, config.bufferSize);
+				config.bufferPool = new LinkedBufferPool(poolSize, bufferSize);
 			}else {
-				config.bufferPool = new SimpleBufferPool(config.poolSize, config.bufferSize);
+				config.bufferPool = new SimpleBufferPool(poolSize, bufferSize);
 			}
+			
 			return config;
 		}
 		

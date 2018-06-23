@@ -325,7 +325,7 @@ public class EventLoop {
 				}
 			}
 			
-			final Session sess = serverSessManager.newSession(chan);
+			final Session sess = serverSessManager.allocateSession(chan);
 			if(sess != null){
 				sess.fireConnected();
 			}
@@ -333,7 +333,7 @@ public class EventLoop {
 		
 		void onClientConnect(final SelectionKey key) {
 			final SocketChannel chan = (SocketChannel)key.channel();
-			final Session sess = clientSessManager.newSession(chan);
+			final Session sess = clientSessManager.allocateSession(chan);
 			if(sess != null){
 				sess.fireConnected();
 			}
@@ -353,6 +353,7 @@ public class EventLoop {
 	
 	// Session pool manager.
 	final static class SessionManager {
+		final static Logger log = LoggerFactory.getLogger(SessionManager.class);
 		
 		final EventLoop eventLoop;
 		final Selector selector;
@@ -383,17 +384,17 @@ public class EventLoop {
 		}
 
 		/**
-		 * Create a session for socket channel.
+		 * Allocate a session for socket channel.
 		 * 
 		 * @param chan
 		 * 
 		 * @return the session, or null if failed
 		 */
-		public Session newSession(final SocketChannel chan){
+		final Session allocateSession(final SocketChannel chan){
 			final Configuration config = eventLoop.config;
 			Session sess = null;
 			try {
-				sess = new Session(name, nextSessionId++, chan, eventLoop);
+				sess = new Session(name, nextSessionId++, this, chan, eventLoop);
 				for(final Class<? extends EventHandler> c : handlers) {
 					final EventHandler handler = ReflectUtil.newObject(c);
 					sess.addHandler(handler);
@@ -425,10 +426,11 @@ public class EventLoop {
 				return null;
 			}
 			
-			for(int i = 0; i < maxConns; ++i) {
+			for(int i = 0; i < maxIndex; ++i) {
 				final Session s = sessions[i];
 				if(s == null || !s.isOpen()) {
 					sessions[i] = sess;
+					sess.setSessionIndex(i);
 					if(i >= maxIndex) {
 						++maxIndex;
 					}
@@ -438,6 +440,20 @@ public class EventLoop {
 				}
 			}
 			return sess;
+		}
+
+		final void releaseSession(final Session session, final int sessIndex) {
+			if(sessIndex != -1){
+				final Session sess = sessions[sessIndex];
+				if(sess == session){
+					sessions[sessIndex] = null;
+					if(sessIndex == maxIndex - 1){
+						--maxIndex;
+					}
+					log.debug("{}: release session {} at sessions[{}] - maxIndex = {}",
+							                       name, session, sessIndex, maxIndex);
+				}
+			}
 		}
 		
 	}

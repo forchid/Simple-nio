@@ -12,6 +12,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.simple.nio.EventLoop.SessionManager;
 import io.simple.util.IoUtil;
 
 /**
@@ -34,6 +35,9 @@ public class Session implements Closeable {
 	protected final EventLoop eventLoop;
 	protected final Configuration config;
 	
+	private final SessionManager sessManager;
+	private int sessIndex = -1;
+	
 	// Base resources
 	protected Selector selector;
 	protected SelectionKey selectKey;
@@ -45,12 +49,14 @@ public class Session implements Closeable {
 	// Handler chain
 	private final HandlerContext head, tail;
 	
-	public Session(String namePrefix, long id, SocketChannel chan, EventLoop eventLoop) {
+	public Session(final String namePrefix, final long id, 
+			SessionManager sessManager, SocketChannel chan, EventLoop eventLoop) {
 		this.chan = chan;
 		this.eventLoop = eventLoop;
 		this.config = eventLoop.getConfig();
 		this.id     = id;
 		this.name   = String.format("%s-%d", namePrefix, id);
+		this.sessManager = sessManager;
 		
 		// chain
 		this.head   = new HeadContext(this);
@@ -75,6 +81,7 @@ public class Session implements Closeable {
 			IoUtil.close(out);
 			IoUtil.close(chan);
 			chan = null;
+			sessManager.releaseSession(this, sessIndex);
 			log.debug("{}: closed", this);
 		}
 	}
@@ -82,6 +89,11 @@ public class Session implements Closeable {
 	@Override
 	public String toString() {
 		return name;
+	}
+	
+	final Session setSessionIndex(int sessIndex){
+		this.sessIndex = sessIndex;
+		return this;
 	}
 	
 	public Session addHandler(final EventHandler handler) {

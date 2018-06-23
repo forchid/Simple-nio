@@ -420,13 +420,13 @@ public class EventLoop {
 			
 			final int maxConns = sessions.length;
 			if(maxIndex >= maxConns) {
-				final String reason = String
-					.format("%s allocation exceeds maxConns %d", name, maxConns);
+				final String reason = String.format("%s allocation exceeds maxConns %d", 
+						name, maxConns);
 				sess.fireCause(new SessionAllocateException(reason));
 				return null;
 			}
 			
-			for(int i = 0; i < maxIndex; ++i) {
+			for(int i = 0; i < maxConns; ++i) {
 				final Session s = sessions[i];
 				if(s == null || !s.isOpen()) {
 					sessions[i] = sess;
@@ -434,8 +434,8 @@ public class EventLoop {
 					if(i >= maxIndex) {
 						++maxIndex;
 					}
-					log.debug("{}: allocate a session success at sessions[{}] - maxIndex = {}",
-							                                                name, i, maxIndex);
+					log.debug("{}: allocate a session success at sessions[{}] - maxIndex = {}", 
+							name, i, maxIndex);
 					break;
 				}
 			}
@@ -450,8 +450,8 @@ public class EventLoop {
 					if(sessIndex == maxIndex - 1){
 						--maxIndex;
 					}
-					log.debug("{}: release session {} at sessions[{}] - maxIndex = {}",
-							                       name, session, sessIndex, maxIndex);
+					log.debug("{}: release session {} at sessions[{}] - maxIndex = {}", 
+							name, session, sessIndex, maxIndex);
 				}
 			}
 		}

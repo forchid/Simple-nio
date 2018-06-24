@@ -16,15 +16,29 @@ import java.util.LinkedList;
 public class BufferOutputStream extends OutputStream {
 	
 	protected final SocketChannel chan;
+	
 	// buffer pool
 	protected final BufferPool bufferPool;
 	protected final LinkedList<Buffer> localPool;
 	private int remaining;
+	private int maxBuffers;
 	
-	public BufferOutputStream(SocketChannel chan, BufferPool bufferPool) {
-		this.chan = chan;
+	public BufferOutputStream(SocketChannel chan, BufferPool bufferPool, int maxBuffers) {
+		this.chan   = chan;
 		this.bufferPool = bufferPool;
 		this.localPool  = new LinkedList<Buffer>();
+		setMaxBuffers(maxBuffers);
+	}
+	
+	public int getMaxBuffers() {
+		return maxBuffers;
+	}
+	
+	public void setMaxBuffers(int maxBuffers) {
+		if(maxBuffers < 1) {
+			throw new IllegalArgumentException("maxBuffers must bigger than 0: " + maxBuffers);
+		}
+		this.maxBuffers = maxBuffers;
 	}
 	
 	@Override

@@ -33,7 +33,6 @@ public class EchoServer extends EventHandlerAdapter {
 			final int n = in.available();
 			log.debug("{}: recv bytes {} ->", session, n);
 			if(n == 0) {
-				log.info("{}: Client closed", session);
 				session.close();
 				return;
 			}

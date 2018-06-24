@@ -29,7 +29,8 @@ public class EchoClient extends EventHandlerAdapter {
 			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
 			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
 			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz").getBytes();
+			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+			+ "abcdefghij").getBytes();
 	long ts, bytes, tps;
 	
 	public EchoClient() {}
@@ -61,9 +62,9 @@ public class EchoClient extends EventHandlerAdapter {
 			}
 			
 			final byte[] buffer = new byte[buf.length];
-			final int i = in.read(buffer);
+			in.read(buffer);
 			if(Arrays.equals(buffer, buf) == false) {
-				throw new IOException("Protocol error: "+i);
+				throw new IOException("Protocol error: "+new String(buffer));
 			}
 			bytes += buf.length;
 			

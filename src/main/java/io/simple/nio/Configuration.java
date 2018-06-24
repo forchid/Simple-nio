@@ -13,6 +13,7 @@ public class Configuration {
 	private int port     = 9696;
 	private int backlog  = 1024;
 	private int maxConns = 10240, maxServerConns, maxClientConns;
+	private int readMaxBuffers = 8, writeMaxBuffers = 64;
 	
 	private boolean autoRead     = true;
 	private boolean bufferDirect = true;
@@ -86,6 +87,26 @@ public class Configuration {
 	
 	public List<Class<? extends EventHandler>> getClientHandlers() {
 		return Collections.unmodifiableList(clientHandlers);
+	}
+	
+	/**
+	 * An input rate limit way for saving buffer memory consumption. 
+	 * When beyond this, don't read bytes from channel until a buffer released.
+	 * 
+	 * @return max read buffer number
+	 */
+	public int getReadMaxBuffers() {
+		return readMaxBuffers;
+	}
+
+	/**
+	 * An output rate limit way for saving buffer memory consumption. 
+	 * When beyond this, cache bytes into disc.
+	 * 
+	 * @return max write buffer number
+	 */
+	public int getWriteMaxBuffers() {
+		return writeMaxBuffers;
 	}
 	
 	public final static Builder newBuilder() {
@@ -164,6 +185,16 @@ public class Configuration {
 			return this;
 		}
 		
+		public Builder setReadMaxBuffers(int readMaxBuffers) {
+			config.readMaxBuffers  = readMaxBuffers;
+			return this;
+		}
+		
+		public Builder setWriteMaxBuffers(int writeMaxBuffers) {
+			config.writeMaxBuffers = writeMaxBuffers;
+			return this;
+		}
+		
 		public Builder appendServerHandler(EventHandler handler) {
 			config.serverHandlers.add(handler.getClass());
 			return this;
@@ -194,6 +225,13 @@ public class Configuration {
 			}
 			if(config.maxClientConns <= 0){
 				config.maxClientConns = maxConns;
+			}
+			
+			if(config.readMaxBuffers  < 1) {
+				throw new IllegalArgumentException("readMaxBuffers must bigger  than 0: "+config.readMaxBuffers);
+			}
+			if(config.writeMaxBuffers < 1) {
+				throw new IllegalArgumentException("writeMaxBuffers must bigger than 0: "+config.writeMaxBuffers);
 			}
 			
 			final long poolSize = config.poolSize;

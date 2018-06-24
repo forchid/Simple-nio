@@ -66,8 +66,8 @@ public class Session implements Closeable {
 		
 		// buffers
 		final BufferPool pool = config.getBufferPool();
-		this.in     = new BufferInputStream(chan, pool);
-		this.out    = new BufferOutputStream(chan, pool);
+		this.in  = new BufferInputStream(chan,  pool, config.getReadMaxBuffers());
+		this.out = new BufferOutputStream(chan, pool, config.getWriteMaxBuffers());
 	}
 	
 	public boolean isOpen() {

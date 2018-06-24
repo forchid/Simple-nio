@@ -6,6 +6,9 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.LinkedList;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * <p>
  * A buffer backed input stream, which supports mark and reset operations 
@@ -24,23 +27,38 @@ import java.util.LinkedList;
  *
  */
 public class BufferInputStream extends InputStream {
+	final static Logger log = LoggerFactory.getLogger(BufferInputStream.class);
 	
 	// MAX_SKIP_BUFFER_SIZE is used to determine the maximum buffer size to
     // use when skipping.
     private static final int MAX_SKIP_BUFFER_SIZE = 2048;
-	
+    
+    // channel and buffers
 	protected final SocketChannel chan;
 	protected final BufferPool bufferPool;
 	protected final LinkedList<Buffer> localPool;
 	private int available;
+	private int maxBuffers;
 	
 	// mark support
 	private int markPos = -1, readLimit;
 	
-	public BufferInputStream(SocketChannel chan, BufferPool bufferPool) {
+	public BufferInputStream(SocketChannel chan, BufferPool bufferPool, int maxBuffers) {
 		this.chan   = chan;
 		this.bufferPool = bufferPool;
 		this.localPool  = new LinkedList<Buffer>();
+		setMaxBuffers(maxBuffers);
+	}
+	
+	public int getMaxBuffers() {
+		return maxBuffers;
+	}
+	
+	public void setMaxBuffers(int maxBuffers) {
+		if(maxBuffers < 1) {
+			throw new IllegalArgumentException("maxBuffers must bigger than 0: " + maxBuffers);
+		}
+		this.maxBuffers = maxBuffers;
 	}
 	
 	/**
@@ -137,14 +155,24 @@ public class BufferInputStream extends InputStream {
 	
 	@Override
 	public int available() throws IOException {
-		final ByteBuffer buffer = headBuffer();
-		final int pos = buffer.position();
-		final int lim = buffer.limit();
+		// limit read rate since 2018-06-24 little-pan
+		int buffers = calcBuffers();
+		if(buffers >= maxBuffers && available > 0) {
+			final ByteBuffer b = localPool.peek().byteBuffer();
+			if(b.limit() == b.capacity()) {
+				log.debug("Don't read from channel - reach maxBuffers = {}, buffers = {}, available = {}",
+						maxBuffers, buffers, available);
+				return available;
+			}
+		}
 		
 		// prepare for channel read
+		final ByteBuffer buffer = headBuffer();
+		final int cap = buffer.capacity();
+		final int pos = buffer.position();
+		final int lim = buffer.limit();
 		if(pos < lim) {
-			buffer.position(lim);
-			buffer.limit(buffer.capacity());
+			buffer.position(lim).limit(cap);
 		}else {
 			buffer.clear();
 		}
@@ -156,21 +184,32 @@ public class BufferInputStream extends InputStream {
 				// buffer changed to read state
 				if(b == buffer && pos < lim) {
 					// old data remaining
-					buffer
-					.limit(buffer.position())
-					.position(pos);
+					final int newlim = buffer.position();
+					buffer.position(pos).limit(newlim);
 				}else {
 					b.flip();
 				}
-				if(i <= 0) {
+				
+				if(i <= 0 || buffers >= maxBuffers) {
 					return available;
 				}
+				
 				b = allocate();
 				b.clear();
+				++buffers;
 			}
 			available += i;
 		}
     }
+	
+	protected int calcBuffers() {
+		final int shift = bufferPool.bufferSizeShift();
+		int buffers = available >> shift;
+		if((available & (bufferPool.bufferSize()-1)) != 0){
+			++buffers;
+		}
+		return buffers;
+	}
 	
 	/**
 	 * Get a byte buffer for user read.

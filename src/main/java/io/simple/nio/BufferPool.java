@@ -17,5 +17,12 @@ public interface BufferPool {
 	 * @return pooled bytes
 	 */
 	long pooledSize();
+	
+	int bufferSize();
+	
+	/**
+	 * @return the buffer size shift number
+	 */
+	int bufferSizeShift();
 
 }

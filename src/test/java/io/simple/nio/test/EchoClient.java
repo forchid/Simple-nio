@@ -41,8 +41,12 @@ public class EchoClient extends EventHandlerAdapter {
 		log.debug("{}: connected", ctx.session());
 		
 		// init
-		ctx.write(buf)
-		.flush();
+		try {
+			ctx.write(buf)
+			.flush();
+		} catch (IOException e) {
+			ctx.close();
+		}
 	}
 	
 	@Override

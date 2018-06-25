@@ -1,5 +1,7 @@
 package io.simple.nio;
 
+import io.simple.nio.store.FileRegion;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -22,9 +24,14 @@ public class BufferOutputStream extends OutputStream {
 	protected LinkedList<Buffer> localPool;
 	private int remaining, maxBuffers;
 	
+	// file backed buffer
+	protected LinkedList<FileRegion> regionPool;
+	private Buffer storeBuffer;
+	
 	public BufferOutputStream(final Session session) {
 		this.session   = session;
 		this.localPool = new LinkedList<Buffer>();
+		this.regionPool= new LinkedList<FileRegion>();
 		
 		final Configuration config = session.getConfig();
 		setMaxBuffers(config.getWriteMaxBuffers());
@@ -42,12 +49,37 @@ public class BufferOutputStream extends OutputStream {
 	}
 	
 	@Override
-	public void write(int b) {
+	public void write(int b) throws IOException {
 		headBuffer().put((byte)b);
 		++remaining;
 	}
 	
-	protected ByteBuffer headBuffer() {
+	protected ByteBuffer headBuffer() throws IOException {
+		if(storeBuffer != null){
+			final ByteBuffer b = storeBuffer.byteBuffer();
+			if(!b.hasRemaining()){
+				FileRegion headRegion = regionPool.peek();
+				if(headRegion == null || headRegion.capacity() - headRegion.writeIndex()==0){
+					headRegion = session.getBufferStore().allocate();
+					regionPool.offer(headRegion);
+				}
+				b.flip();
+				int rrem = headRegion.capacity() - headRegion.writeIndex();
+				for(int n = 0; b.hasRemaining();){
+					final int i = headRegion.write(b);
+					n += i;
+					if(n >= rrem && b.hasRemaining()){
+						n = 0;
+						headRegion = session.getBufferStore().allocate();
+						regionPool.offer(headRegion);
+						rrem = headRegion.capacity();
+					}
+				}
+				b.clear();
+			}
+			return b;
+		}
+		
 		final Buffer buf = localPool.peek();
 		if(buf == null || !buf.byteBuffer().hasRemaining()) {
 			final Buffer newBuf = session.alloc();
@@ -66,12 +98,12 @@ public class BufferOutputStream extends OutputStream {
 	}
 	
 	@Override
-	public void write(byte b[]) {
+	public void write(byte b[]) throws IOException {
         write(b, 0, b.length);
     }
 	
 	@Override
-	public void write(byte b[], int off, int len) {
+	public void write(byte b[], int off, int len) throws IOException {
         if (b == null) {
             throw new NullPointerException();
         } else if ((off < 0) || (off > b.length) || (len < 0) ||

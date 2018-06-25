@@ -1,5 +1,7 @@
 package io.simple.nio;
 
+import io.simple.nio.store.FileStore;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -20,6 +22,7 @@ public class Configuration {
 	private int bufferSize       = BufferPool.DEFAULT_BUFFER_SIZE;
 	private long poolSize        = Runtime.getRuntime().maxMemory()>>1;
 	private BufferPool bufferPool;
+	private FileStore  bufferStore;
 	
 	private final List<Class<? extends EventHandler>> serverHandlers;
 	private final List<Class<? extends EventHandler>> clientHandlers;
@@ -79,6 +82,10 @@ public class Configuration {
 	
 	public BufferPool getBufferPool() {
 		return bufferPool;
+	}
+	
+	public FileStore getBufferStore() {
+		return bufferStore;
 	}
 	
 	public List<Class<? extends EventHandler>> getServerHandlers() {
@@ -259,6 +266,7 @@ public class Configuration {
 			}else {
 				config.bufferPool = new SimpleBufferPool(poolSize, bufferSize);
 			}
+			config.bufferStore    = FileStore.open("BufferStore", bufferSize);
 			
 			return config;
 		}

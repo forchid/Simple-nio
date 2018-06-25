@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.simple.nio.EventLoop.SessionManager;
+import io.simple.nio.store.FileStore;
 import io.simple.util.IoUtil;
 
 /**
@@ -141,6 +142,10 @@ public class Session implements Closeable {
 		return config.getBufferPool();
 	}
 	
+	public FileStore getBufferStore(){
+		return config.getBufferStore();
+	}
+	
 	public SocketChannel getChannel(){
 		return chan;
 	}
@@ -221,8 +226,9 @@ public class Session implements Closeable {
 	 * Write byte array into output stream.
 	 * @param b
 	 * @return this session
+	 * @throws IOException 
 	 */
-	public Session write(byte b[]) {
+	public Session write(byte b[]) throws IOException {
 		out.write(b);
 		return this;
 	}
@@ -235,8 +241,9 @@ public class Session implements Closeable {
 	 * @param len
 	 * 
 	 * @return this session
+	 * @throws IOException 
 	 */
-	public Session write(byte b[], int off, int len) {
+	public Session write(byte b[], int off, int len) throws IOException {
 		out.write(b, off, len);
 		return this;
 	}
@@ -246,8 +253,9 @@ public class Session implements Closeable {
 	 * 
 	 * @param buf
 	 * @return this session
+	 * @throws IOException 
 	 */
-	public Session write(ByteBuffer buf) {
+	public Session write(ByteBuffer buf) throws IOException {
 		for(;buf.hasRemaining();) {
 			out.write(buf.get());
 		}
@@ -262,8 +270,9 @@ public class Session implements Closeable {
 	 * @param len
 	 * 
 	 * @return this session
+	 * @throws IOException 
 	 */
-	public Session write(ByteBuffer buf, int off, int len) {
+	public Session write(ByteBuffer buf, int off, int len) throws IOException {
 		for(;off < len;) {
 			out.write(buf.get(off++));
 		}

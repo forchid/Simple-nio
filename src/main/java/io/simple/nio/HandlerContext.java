@@ -1,6 +1,7 @@
 package io.simple.nio;
 
 import java.io.Closeable;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
@@ -59,8 +60,9 @@ public class HandlerContext implements Closeable {
 	 * Write byte array into output stream.
 	 * @param b
 	 * @return this context
+	 * @throws IOException 
 	 */
-	public HandlerContext write(byte b[]) {
+	public HandlerContext write(byte b[]) throws IOException {
 		session.write(b);
 		return this;
 	}
@@ -73,8 +75,9 @@ public class HandlerContext implements Closeable {
 	 * @param len
 	 * 
 	 * @return this context
+	 * @throws IOException 
 	 */
-	public HandlerContext write(byte b[], int off, int len) {
+	public HandlerContext write(byte b[], int off, int len) throws IOException {
 		session.write(b, off, len);
 		return this;
 	}
@@ -84,8 +87,9 @@ public class HandlerContext implements Closeable {
 	 * 
 	 * @param buf
 	 * @return this context
+	 * @throws IOException 
 	 */
-	public HandlerContext write(ByteBuffer buf) {
+	public HandlerContext write(ByteBuffer buf) throws IOException {
 		session.write(buf);
 		return this;
 	}
@@ -98,8 +102,9 @@ public class HandlerContext implements Closeable {
 	 * @param len
 	 * 
 	 * @return this context
+	 * @throws IOException 
 	 */
-	public HandlerContext write(ByteBuffer buf, int off, int len) {
+	public HandlerContext write(ByteBuffer buf, int off, int len) throws IOException {
 		session.write(buf, off, len);
 		return this;
 	}

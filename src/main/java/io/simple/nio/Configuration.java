@@ -13,7 +13,7 @@ public class Configuration {
 	private int port     = 9696;
 	private int backlog  = 1024;
 	private int maxConns = 10240, maxServerConns, maxClientConns;
-	private int readMaxBuffers = 8, writeMaxBuffers = 64;
+	private int readMaxBuffers = 8, writeMaxBuffers = 64, writeSpinCount = 16;
 	
 	private boolean autoRead     = true;
 	private boolean bufferDirect = true;
@@ -109,6 +109,16 @@ public class Configuration {
 		return writeMaxBuffers;
 	}
 	
+	/**
+	 * The maximum loop count for a write operation until channel 
+	 *returns a non-zero value.
+	 * 
+	 * @return write spin count
+	 */
+	public int getWriteSpinCount(){
+		return writeSpinCount;
+	}
+	
 	public final static Builder newBuilder() {
 		return new Builder();
 	}
@@ -195,6 +205,11 @@ public class Configuration {
 			return this;
 		}
 		
+		public Builder setWriteSpinCount(int writeSpinCount){
+			config.writeSpinCount = writeSpinCount;
+			return this;
+		}
+		
 		public Builder appendServerHandler(EventHandler handler) {
 			config.serverHandlers.add(handler.getClass());
 			return this;
@@ -232,6 +247,9 @@ public class Configuration {
 			}
 			if(config.writeMaxBuffers < 1) {
 				throw new IllegalArgumentException("writeMaxBuffers must bigger than 0: "+config.writeMaxBuffers);
+			}
+			if(config.writeSpinCount  < 1) {
+				throw new IllegalArgumentException("writeSpinCount must bigger than 0: "+config.writeSpinCount);
 			}
 			
 			final long poolSize = config.poolSize;

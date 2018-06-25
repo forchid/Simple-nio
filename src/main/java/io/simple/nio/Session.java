@@ -65,9 +65,8 @@ public class Session implements Closeable {
 		this.tail.prev = this.head;
 		
 		// buffers
-		final BufferPool pool = config.getBufferPool();
-		this.in  = new BufferInputStream(chan,  pool, config.getReadMaxBuffers());
-		this.out = new BufferOutputStream(chan, pool, config.getWriteMaxBuffers());
+		this.in  = new BufferInputStream(this);
+		this.out = new BufferOutputStream(this);
 	}
 	
 	public boolean isOpen() {
@@ -132,6 +131,18 @@ public class Session implements Closeable {
 	
 	public Buffer alloc()throws BufferAllocateException {
 		return config.getBufferPool().allocate();
+	}
+	
+	public Configuration getConfig(){
+		return config;
+	}
+	
+	public BufferPool getBufferPool(){
+		return config.getBufferPool();
+	}
+	
+	public SocketChannel getChannel(){
+		return chan;
 	}
 
 	public Selector getSelector() {

@@ -34,20 +34,19 @@ public class BufferInputStream extends InputStream {
     private static final int MAX_SKIP_BUFFER_SIZE = 2048;
     
     // channel and buffers
-	protected final SocketChannel chan;
-	protected final BufferPool bufferPool;
-	protected final LinkedList<Buffer> localPool;
-	private int available;
-	private int maxBuffers;
+	protected final Session session;
+	protected LinkedList<Buffer> localPool;
+	private int available, maxBuffers;
 	
 	// mark support
 	private int markPos = -1, readLimit;
 	
-	public BufferInputStream(SocketChannel chan, BufferPool bufferPool, int maxBuffers) {
-		this.chan   = chan;
-		this.bufferPool = bufferPool;
-		this.localPool  = new LinkedList<Buffer>();
-		setMaxBuffers(maxBuffers);
+	public BufferInputStream(final Session session) {
+		this.session   = session;
+		this.localPool = new LinkedList<Buffer>();
+		
+		final Configuration config = session.getConfig();
+		setMaxBuffers(config.getReadMaxBuffers());
 	}
 	
 	public int getMaxBuffers() {
@@ -67,6 +66,7 @@ public class BufferInputStream extends InputStream {
 	 */
 	@Override
 	public int read() throws IOException {
+		final SocketChannel chan= session.getChannel();
 		final ByteBuffer buffer = tailBuffer();
 		if(!buffer.hasRemaining()) {
 			final ByteBuffer b;
@@ -166,6 +166,7 @@ public class BufferInputStream extends InputStream {
 			}
 		}
 		
+		final SocketChannel chan= session.getChannel();
 		// prepare for channel read
 		final ByteBuffer buffer = headBuffer();
 		final int cap = buffer.capacity();
@@ -203,6 +204,7 @@ public class BufferInputStream extends InputStream {
     }
 	
 	protected int calcBuffers() {
+		final BufferPool bufferPool = session.getBufferPool();
 		final int shift = bufferPool.bufferSizeShift();
 		int buffers = available >> shift;
 		if((available & (bufferPool.bufferSize()-1)) != 0){
@@ -250,7 +252,7 @@ public class BufferInputStream extends InputStream {
 	 * @return a byte buffer
 	 */
 	protected ByteBuffer allocate() {
-		final Buffer newBuf = bufferPool.allocate();
+		final Buffer newBuf = session.alloc();
 		boolean failed = true;
 		try {
 			localPool.offerFirst(newBuf);
@@ -269,7 +271,7 @@ public class BufferInputStream extends InputStream {
 	@Override
 	public void close() throws IOException {
 		releaseBuffers();
-		chan.shutdownInput();
+		session.getChannel().shutdownInput();
 	}
 	
 	protected void releaseBuffers() {

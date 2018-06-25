@@ -15,19 +15,19 @@ import java.util.LinkedList;
  */
 public class BufferOutputStream extends OutputStream {
 	
-	protected final SocketChannel chan;
+	// stream owner
+	protected final Session session;
 	
 	// buffer pool
-	protected final BufferPool bufferPool;
-	protected final LinkedList<Buffer> localPool;
-	private int remaining;
-	private int maxBuffers;
+	protected LinkedList<Buffer> localPool;
+	private int remaining, maxBuffers;
 	
-	public BufferOutputStream(SocketChannel chan, BufferPool bufferPool, int maxBuffers) {
-		this.chan   = chan;
-		this.bufferPool = bufferPool;
-		this.localPool  = new LinkedList<Buffer>();
-		setMaxBuffers(maxBuffers);
+	public BufferOutputStream(final Session session) {
+		this.session   = session;
+		this.localPool = new LinkedList<Buffer>();
+		
+		final Configuration config = session.getConfig();
+		setMaxBuffers(config.getWriteMaxBuffers());
 	}
 	
 	public int getMaxBuffers() {
@@ -50,7 +50,7 @@ public class BufferOutputStream extends OutputStream {
 	protected ByteBuffer headBuffer() {
 		final Buffer buf = localPool.peek();
 		if(buf == null || !buf.byteBuffer().hasRemaining()) {
-			final Buffer newBuf = bufferPool.allocate();
+			final Buffer newBuf = session.alloc();
 			boolean failed = true;
 			try {
 				localPool.offerFirst(newBuf);
@@ -87,18 +87,22 @@ public class BufferOutputStream extends OutputStream {
 	
 	@Override
 	public void flush() throws IOException {
-		for(;;) {
+		final Configuration config = session.getConfig();
+		final int spinCount = config.getWriteSpinCount();
+		final SocketChannel chan = session.getChannel();
+		for(int spins = 0; spins < spinCount;) {
 			final Buffer buf = localPool.peekLast();
 			if(buf == null) {
 				break;
 			}
 			final ByteBuffer buffer = buf.byteBuffer();
 			buffer.flip();
-			for(;buffer.hasRemaining();) {
+			for(;buffer.hasRemaining() && spins < spinCount;) {
 				final int i = chan.write(buffer);
 				if(i == 0) {
 					break;
 				}
+				++spins;
 				remaining -= i;
 			}
 			if(buffer.hasRemaining()) {
@@ -113,7 +117,7 @@ public class BufferOutputStream extends OutputStream {
 	@Override
 	public void close() throws IOException {
 		releaseBuffers();
-		chan.shutdownOutput();
+		session.getChannel().shutdownOutput();
     }
 	
 	protected void releaseBuffers() {

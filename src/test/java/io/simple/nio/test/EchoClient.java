@@ -102,7 +102,7 @@ public class EchoClient extends EventHandlerAdapter {
 				.setName("echo-client")
 				.build();
 		final EventLoop eventLoop = new EventLoop(config);
-		for(int i = 0, n = 10; i < n; ++i){
+		for(int i = 0, n = 1000; i < n; ++i){
 			eventLoop.connect();
 		}
 	}

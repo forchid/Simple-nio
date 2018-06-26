@@ -26,10 +26,9 @@ public class FileRegion {
 		this.released = true;
 	}
 	
-	final void onAllocate(){
+	protected void onAllocate(){
 		if(!released){
-			final String e = String.format("%s:FileRegion-%d not released", store, id);
-			throw new IllegalStateException(e);
+			throw new IllegalStateException(this + " not released");
 		}
 		released = false;
 	}
@@ -38,8 +37,16 @@ public class FileRegion {
 		return readIndex;
 	}
 	
+	public int readRemaining(){
+		return (writeIndex - readIndex);
+	}
+	
 	public int writeIndex(){
 		return writeIndex;
+	}
+	
+	public int writeRemaining(){
+		return (store.regionSize - writeIndex);
 	}
 	
 	public int capacity(){
@@ -63,10 +70,12 @@ public class FileRegion {
 	}
 	
 	public void release(){
-		checkNotReleased();
 		store.release(this);
+	}
+	
+	protected void onRelease(){
+		checkNotReleased();
 		released = true;
-		clear();
 	}
 	
 	public FileRegion clear(){
@@ -76,8 +85,7 @@ public class FileRegion {
 	
 	final void checkNotReleased(){
 		if(released){
-			final String e = String.format("%s:FileRegion-%d has released", store, id);
-			throw new IllegalStateException(e);
+			throw new IllegalStateException(this + " has released");
 		}
 	}
 
@@ -97,6 +105,12 @@ public class FileRegion {
 		}
 		writeIndex = i;
 		return this;
+	}
+	
+	@Override
+	public String toString(){
+		return (String.format("%s:FileRegion-%d(ridx = %d, widx = %d)", 
+				store, id, readIndex, writeIndex));
 	}
 	
 }

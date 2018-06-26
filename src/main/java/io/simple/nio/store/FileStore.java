@@ -61,6 +61,7 @@ public class FileStore implements Closeable {
 	
 	public void release(FileRegion region) {
 		if(region.store == this){
+			region.onRelease();
 			if(region.id == maxId - 1){
 				try {
 					chan.truncate((maxId-1) * regionSize);
@@ -68,7 +69,7 @@ public class FileStore implements Closeable {
 					return;
 				} catch (final IOException e) {}
 			}
-			regionPool.offer(region);
+			regionPool.offer(region.clear());
 		}
 	}
 	
@@ -103,11 +104,12 @@ public class FileStore implements Closeable {
 			throws IOException {
 		region.checkNotReleased();
 		
-		final int ridx = region.readIndex();
-		final int size = Math.min(region.writeIndex()-ridx, count);
+		final int size = Math.min(region.readRemaining(), count);
 		if(size == 0){
 			return 0;
 		}
+		
+		final int ridx = region.readIndex();
 		final long position = region.id * regionSize + ridx;
 		final int n = (int)chan.transferTo(position, size, dst);
 		this.size  -= n;
@@ -118,8 +120,7 @@ public class FileStore implements Closeable {
 	public int read(FileRegion region, ByteBuffer dst) throws IOException {
 		region.checkNotReleased();
 		
-		final int ridx = region.readIndex();
-		final int rem  = region.writeIndex()-ridx;
+		final int rem = region.writeRemaining();
 		if(rem == 0){
 			return -1;
 		}
@@ -128,9 +129,11 @@ public class FileStore implements Closeable {
 		if(size == 0){
 			return 0;
 		}
+		
 		final int lim = dst.limit();
 		try{
 			dst.limit(dst.position() + size);
+			final int ridx = region.readIndex();
 			final long position = region.id * regionSize + ridx;
 			final int n = chan.read(dst, position);
 			if(n == -1){
@@ -147,14 +150,15 @@ public class FileStore implements Closeable {
 	public int write(FileRegion region, ByteBuffer src) throws IOException {
 		region.checkNotReleased();
 		
-		final int widx = region.writeIndex();
-		final int size = Math.min(regionSize - widx, src.remaining());
+		final int size = Math.min(region.writeRemaining(), src.remaining());
 		if(size == 0){
 			return 0;
 		}
+		
 		final int lim = src.limit();
 		try{
 			src.limit(src.position() + size);
+			final int widx = region.writeIndex();
 			final long position = region.id * regionSize + widx;
 			final int n = chan.write(src, position);
 			this.size  += n;

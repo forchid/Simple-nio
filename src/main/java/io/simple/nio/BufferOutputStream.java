@@ -1,12 +1,16 @@
 package io.simple.nio;
 
 import io.simple.nio.store.FileRegion;
+import io.simple.nio.store.FileStore;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.LinkedList;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A buffer backed output stream.
@@ -16,17 +20,18 @@ import java.util.LinkedList;
  *
  */
 public class BufferOutputStream extends OutputStream {
+	final static Logger log = LoggerFactory.getLogger(BufferOutputStream.class);
 	
 	// stream owner
 	protected final Session session;
 	
 	// buffer pool
 	protected LinkedList<Buffer> localPool;
-	private int remaining, maxBuffers;
+	private int remaining, maxBuffers, buffers;
 	
 	// file backed buffer
 	protected LinkedList<FileRegion> regionPool;
-	private Buffer storeBuffer;
+	private Buffer regionBuffer;
 	
 	public BufferOutputStream(final Session session) {
 		this.session   = session;
@@ -50,51 +55,81 @@ public class BufferOutputStream extends OutputStream {
 	
 	@Override
 	public void write(int b) throws IOException {
-		headBuffer().put((byte)b);
+		tailBuffer().put((byte)b);
 		++remaining;
 	}
 	
-	protected ByteBuffer headBuffer() throws IOException {
-		if(storeBuffer != null){
-			final ByteBuffer b = storeBuffer.byteBuffer();
-			if(!b.hasRemaining()){
-				FileRegion headRegion = regionPool.peek();
-				if(headRegion == null || headRegion.capacity() - headRegion.writeIndex()==0){
-					headRegion = session.getBufferStore().allocate();
-					regionPool.offer(headRegion);
-				}
-				b.flip();
-				int rrem = headRegion.capacity() - headRegion.writeIndex();
-				for(int n = 0; b.hasRemaining();){
-					final int i = headRegion.write(b);
-					n += i;
-					if(n >= rrem && b.hasRemaining()){
-						n = 0;
-						headRegion = session.getBufferStore().allocate();
-						regionPool.offer(headRegion);
-						rrem = headRegion.capacity();
-					}
-				}
-				b.clear();
+	protected ByteBuffer tailBuffer() throws IOException {
+		if(regionBuffer != null){
+			return flushRegion();
+		}
+		
+		final Buffer buf = localPool.peekLast();
+		if(buf == null || !buf.byteBuffer().hasRemaining()) {
+			if(buffers == maxBuffers-1){
+				// Write HWM - switch to buffer store
+				regionBuffer = session.alloc();
+				++buffers;
+				return regionBuffer.byteBuffer();
 			}
+			return allocBuffer().byteBuffer();
+		}
+		return buf.byteBuffer();
+	}
+	
+	protected ByteBuffer flushRegion() throws IOException {
+		final ByteBuffer b = regionBuffer.byteBuffer();
+		if(b.hasRemaining()){
 			return b;
 		}
 		
-		final Buffer buf = localPool.peek();
-		if(buf == null || !buf.byteBuffer().hasRemaining()) {
-			final Buffer newBuf = session.alloc();
-			boolean failed = true;
-			try {
-				localPool.offerFirst(newBuf);
-				failed = false;
-				return newBuf.byteBuffer();
-			}finally {
-				if(failed) {
-					newBuf.release();
-				}
+		FileRegion tailRegion = regionPool.peekLast();
+		if(tailRegion == null || tailRegion.writeRemaining()==0){
+			tailRegion = allocRegion();
+		}
+		b.flip();
+		int regRem = tailRegion.writeRemaining();
+		for(int n = 0; b.hasRemaining();){
+			final int i = tailRegion.write(b);
+			n += i;
+			if(n >= regRem && b.hasRemaining()){
+				n = 0;
+				tailRegion = allocRegion();
+				regRem = tailRegion.writeRemaining();
 			}
 		}
-		return buf.byteBuffer();
+		b.clear();
+		return b;
+	}
+	
+	protected Buffer allocBuffer(){
+		final Buffer newBuf = session.alloc();
+		boolean failed = true;
+		try {
+			localPool.offer(newBuf);
+			++buffers;
+			failed = false;
+			return newBuf;
+		}finally {
+			if(failed) {
+				newBuf.release();
+			}
+		}
+	}
+	
+	protected FileRegion allocRegion(){
+		final FileStore store = session.getBufferStore();
+		final FileRegion region = store.allocate();
+		boolean failed = true;
+		try{
+			regionPool.offer(region);
+			failed = false;
+			return region;
+		}finally{
+			if(failed){
+				region.release();
+			}
+		}
 	}
 	
 	@Override
@@ -123,27 +158,85 @@ public class BufferOutputStream extends OutputStream {
 		final int spinCount = config.getWriteSpinCount();
 		final SocketChannel chan = session.getChannel();
 		for(int spins = 0; spins < spinCount;) {
-			final Buffer buf = localPool.peekLast();
+			// Step-1. flush local buffers
+			final Buffer buf = localPool.peek();
 			if(buf == null) {
+				if(regionBuffer != null){
+					// Step-2. flush store buffers
+					for(; spins < spinCount; ){
+						final FileRegion region = regionPool.peek();
+						if(region == null){
+							// Step-3. flush region buffer
+							final ByteBuffer buffer = regionBuffer.byteBuffer();
+							buffer.flip();
+							spins = flushBuffer(chan, buffer, spins, spinCount);
+							if(buffer.remaining() != 0){
+								buffer.compact();
+								break;
+							}
+							// Write LWM - switch to local buffers
+							regionBuffer.release();
+							regionBuffer = null;
+							--buffers;
+							break;
+						}
+						int rem = region.readRemaining();
+						for(;rem != 0 && spins < spinCount;){
+							final int i = region.transferTo(rem, chan);
+							if(i == 0){
+								break;
+							}
+							++spins;
+							remaining -= i;
+							rem = region.readRemaining();
+						}
+						if(rem != 0){
+							break;
+						}
+						regionPool.poll();
+						region.release();
+					}
+				}
 				break;
 			}
 			final ByteBuffer buffer = buf.byteBuffer();
 			buffer.flip();
-			for(;buffer.hasRemaining() && spins < spinCount;) {
-				final int i = chan.write(buffer);
-				if(i == 0) {
-					break;
-				}
-				++spins;
-				remaining -= i;
-			}
-			if(buffer.hasRemaining()) {
+			spins = flushBuffer(chan, buffer, spins, spinCount);
+			if(buffer.remaining() != 0) {
 				buffer.compact();
 				break;
 			}
-			localPool.pollLast();
+			localPool.poll();
 			buf.release();
+			--buffers;
 		}
+	}
+	
+	/**
+	 * Flush the buffer in write spin count limit.
+	 * 
+	 * @param chan
+	 * @param buffer
+	 * @param spins
+	 * @param spinCount
+	 * 
+	 * @return the new spin number
+	 * 
+	 * @throws IOException
+	 */
+	protected int flushBuffer(final SocketChannel chan, final ByteBuffer buffer, 
+			int spins, final int spinCount) throws IOException {
+		int rem = buffer.remaining();
+		for(; rem != 0 && spins < spinCount;) {
+			final int i = chan.write(buffer);
+			if(i == 0) {
+				break;
+			}
+			++spins;
+			remaining -= i;
+			rem = buffer.remaining();
+		}
+		return spins;
 	}
 	
 	@Override
@@ -159,6 +252,17 @@ public class BufferOutputStream extends OutputStream {
 				break;
 			}
 			buf.release();
+		}
+		for(;;){
+			final FileRegion reg = regionPool.poll();
+			if(reg == null){
+				break;
+			}
+			reg.release();
+		}
+		if(regionBuffer != null){
+			regionBuffer.release();
+			regionBuffer = null;
 		}
 	}
 	

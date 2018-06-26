@@ -121,7 +121,7 @@ public class BufferInputStream extends InputStream {
         }
         b[off] = (byte)c;
         
-        final int size = Math.min(len, available()+1/*prev byte*/);
+        final int size = Math.min(len, available + 1/*prev byte*/);
         int i = 1;
         for (; i < size ; i++) {
             c = read();

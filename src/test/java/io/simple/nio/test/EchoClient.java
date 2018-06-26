@@ -17,7 +17,7 @@ public class EchoClient extends EventHandlerAdapter {
 	final static Logger log = LoggerFactory.getLogger(EchoClient.class);
 	
 	final byte []buf = 
-			( "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+			( "0123456789klmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
 			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
 			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
 			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
@@ -30,7 +30,7 @@ public class EchoClient extends EventHandlerAdapter {
 			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
 			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
 			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghij").getBytes();
+			+ "9876543210abcdefghij").getBytes();
 	long ts, bytes, tps;
 	
 	public EchoClient() {}
@@ -66,15 +66,17 @@ public class EchoClient extends EventHandlerAdapter {
 			}
 			
 			final byte[] buffer = new byte[buf.length];
-			in.read(buffer);
-			if(Arrays.equals(buffer, buf) == false) {
-				throw new IOException("Protocol error: "+new String(buffer));
+			for(int i = 0, size = n/buf.length; i < size; ++i){
+				in.read(buffer);
+				if(Arrays.equals(buffer, buf) == false) {
+					throw new IOException("Protocol error: "+new String(buffer));
+				}
+				ctx.write(buffer);
+				bytes += buf.length;
 			}
-			bytes += buf.length;
 			
 			// send
-			ctx.write(buffer)
-			.flush();
+			ctx.flush();
 			
 		} catch (IOException e) {
 			onCause(ctx, e);
@@ -106,7 +108,7 @@ public class EchoClient extends EventHandlerAdapter {
 				.setName("echo-client")
 				.build();
 		final EventLoop eventLoop = new EventLoop(config);
-		for(int i = 0, n = 1000; i < n; ++i){
+		for(int i = 0, n = 10; i < n; ++i){
 			eventLoop.connect();
 		}
 	}

@@ -97,8 +97,15 @@ public class Configuration {
 	}
 	
 	/**
+	 * <p>
 	 * An input rate limit way for saving buffer memory consumption. 
 	 * When beyond this, don't read bytes from channel until a buffer released.
+	 * </p>
+	 * 
+	 * <p>
+	 * <b>Note</b>: {@link #getReadMaxBuffers()} x {@link #getBufferSize()} should
+	 * be bigger than max packet size in user protocol.
+	 * </p>
 	 * 
 	 * @return max read buffer number
 	 */

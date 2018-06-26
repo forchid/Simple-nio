@@ -2,6 +2,7 @@ package io.simple.nio;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.SocketAddress;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectableChannel;
@@ -114,6 +115,7 @@ public class EventLoop {
 		try {
 			chan = ServerSocketChannel.open();
 			chan.configureBlocking(false);
+			chan.socket().setReuseAddress(true);
 			final String host = config.getHost();
 			final int port = config.getPort();
 			final SocketAddress local = new InetSocketAddress(host, port);
@@ -409,6 +411,14 @@ public class EventLoop {
 				if(chan.isConnectionPending()){
 					chan.finishConnect();
 				}
+				
+				// Setting socket options
+				// @since 2018-06-26 little-pan
+				final Socket so = chan.socket();
+				so.setTcpNoDelay(true);
+				so.setKeepAlive(true);
+				so.setReuseAddress(true);
+				
 				sess.setSelector(selector);
 				if(config.isAutoRead()) {
 					sess.enableRead();

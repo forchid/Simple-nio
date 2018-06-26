@@ -48,6 +48,7 @@ public class EchoServer extends EventHandlerAdapter {
 			.flush();
 			
 		} catch (IOException e) {
+			log.warn(session+": handle data error", e);
 			session.close();
 		}
 	}

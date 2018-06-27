@@ -15,7 +15,7 @@ public class Configuration {
 	private int port     = 9696;
 	private int backlog  = 1024;
 	private int maxConns = 10240, maxServerConns, maxClientConns;
-	private int readMaxBuffers = 8, writeMaxBuffers = 64, writeSpinCount = 16;
+	private int maxReadBuffers = 8, maxWriteBuffers = 64, writeSpinCount = 16;
 	
 	private boolean autoRead     = true;
 	private boolean bufferDirect = true;
@@ -26,6 +26,8 @@ public class Configuration {
 	
 	private final List<Class<? extends EventHandler>> serverHandlers;
 	private final List<Class<? extends EventHandler>> clientHandlers;
+	
+	private EventLoopListener eventLoopListener;
 	
 	public Configuration() {
 		serverHandlers = new ArrayList<Class<? extends EventHandler>>();
@@ -96,6 +98,10 @@ public class Configuration {
 		return Collections.unmodifiableList(clientHandlers);
 	}
 	
+	public EventLoopListener getEventLoopListener(){
+		return eventLoopListener;
+	}
+	
 	/**
 	 * <p>
 	 * An input rate limit way for saving buffer memory consumption. 
@@ -103,14 +109,14 @@ public class Configuration {
 	 * </p>
 	 * 
 	 * <p>
-	 * <b>Note</b>: {@link #getReadMaxBuffers()} x {@link #getBufferSize()} should
+	 * <b>Note</b>: {@link #getMaxReadBuffers()} x {@link #getBufferSize()} should
 	 * be bigger than max packet size in user protocol.
 	 * </p>
 	 * 
 	 * @return max read buffer number
 	 */
-	public int getReadMaxBuffers() {
-		return readMaxBuffers;
+	public int getMaxReadBuffers() {
+		return maxReadBuffers;
 	}
 
 	/**
@@ -119,8 +125,8 @@ public class Configuration {
 	 * 
 	 * @return max write buffer number
 	 */
-	public int getWriteMaxBuffers() {
-		return writeMaxBuffers;
+	public int getMaxWriteBuffers() {
+		return maxWriteBuffers;
 	}
 	
 	/**
@@ -209,13 +215,13 @@ public class Configuration {
 			return this;
 		}
 		
-		public Builder setReadMaxBuffers(int readMaxBuffers) {
-			config.readMaxBuffers  = readMaxBuffers;
+		public Builder setMaxReadBuffers(int maxReadBuffers) {
+			config.maxReadBuffers  = maxReadBuffers;
 			return this;
 		}
 		
-		public Builder setWriteMaxBuffers(int writeMaxBuffers) {
-			config.writeMaxBuffers = writeMaxBuffers;
+		public Builder setMaxWriteBuffers(int maxWriteBuffers) {
+			config.maxWriteBuffers = maxWriteBuffers;
 			return this;
 		}
 		
@@ -244,6 +250,11 @@ public class Configuration {
 			return this;
 		}
 		
+		public Builder setEventLoopListener(EventLoopListener eventLoopListener){
+			config.eventLoopListener = eventLoopListener;
+			return this;
+		}
+		
 		public Configuration build() {
 			final int maxConns = config.maxConns;
 			if(maxConns < 1) {
@@ -256,11 +267,11 @@ public class Configuration {
 				config.maxClientConns = maxConns;
 			}
 			
-			if(config.readMaxBuffers  < 1) {
-				throw new IllegalArgumentException("readMaxBuffers must bigger  than 0: "+config.readMaxBuffers);
+			if(config.maxReadBuffers  < 1) {
+				throw new IllegalArgumentException("maxReadBuffers must bigger  than 0: "+config.maxReadBuffers);
 			}
-			if(config.writeMaxBuffers < 1) {
-				throw new IllegalArgumentException("writeMaxBuffers must bigger than 0: "+config.writeMaxBuffers);
+			if(config.maxWriteBuffers < 1) {
+				throw new IllegalArgumentException("maxWriteBuffers must bigger than 0: "+config.maxWriteBuffers);
 			}
 			if(config.writeSpinCount  < 1) {
 				throw new IllegalArgumentException("writeSpinCount must bigger than 0: "+config.writeSpinCount);
@@ -274,6 +285,10 @@ public class Configuration {
 				config.bufferPool = new SimpleBufferPool(poolSize, bufferSize);
 			}
 			config.bufferStore    = FileStore.open("BufferStore", bufferSize);
+			
+			if(config.eventLoopListener == null){
+				config.eventLoopListener = EventLoopListener.NOOP;
+			}
 			
 			return config;
 		}

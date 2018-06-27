@@ -45,8 +45,8 @@ public class BufferInputStream extends InputStream {
 		this.session   = session;
 		this.localPool = new LinkedList<Buffer>();
 		
-		final Configuration config = session.getConfig();
-		setMaxBuffers(config.getReadMaxBuffers());
+		final Configuration config = session.config();
+		setMaxBuffers(config.getMaxReadBuffers());
 	}
 	
 	public int getMaxBuffers() {
@@ -66,7 +66,7 @@ public class BufferInputStream extends InputStream {
 	 */
 	@Override
 	public int read() throws IOException {
-		final SocketChannel chan= session.getChannel();
+		final SocketChannel chan= session.channel();
 		final ByteBuffer buffer = tailBuffer();
 		if(!buffer.hasRemaining()) {
 			final ByteBuffer b;
@@ -166,7 +166,7 @@ public class BufferInputStream extends InputStream {
 			}
 		}
 		
-		final SocketChannel chan= session.getChannel();
+		final SocketChannel chan= session.channel();
 		// prepare for channel read
 		final ByteBuffer buffer = headBuffer();
 		final int cap = buffer.capacity();
@@ -204,7 +204,7 @@ public class BufferInputStream extends InputStream {
     }
 	
 	protected int calcBuffers() {
-		final BufferPool bufferPool = session.getBufferPool();
+		final BufferPool bufferPool = session.bufferPool();
 		final int shift = bufferPool.bufferSizeShift();
 		int buffers = available >> shift;
 		if((available & (bufferPool.bufferSize()-1)) != 0){
@@ -271,7 +271,7 @@ public class BufferInputStream extends InputStream {
 	@Override
 	public void close() throws IOException {
 		releaseBuffers();
-		session.getChannel().shutdownInput();
+		session.channel().shutdownInput();
 	}
 	
 	protected void releaseBuffers() {

@@ -38,8 +38,8 @@ public class BufferOutputStream extends OutputStream {
 		this.localPool = new LinkedList<Buffer>();
 		this.regionPool= new LinkedList<FileRegion>();
 		
-		final Configuration config = session.getConfig();
-		setMaxBuffers(config.getWriteMaxBuffers());
+		final Configuration config = session.config();
+		setMaxBuffers(config.getMaxWriteBuffers());
 	}
 	
 	public int getMaxBuffers() {
@@ -118,7 +118,7 @@ public class BufferOutputStream extends OutputStream {
 	}
 	
 	protected FileRegion allocRegion(){
-		final FileStore store = session.getBufferStore();
+		final FileStore store = session.bufferStore();
 		final FileRegion region = store.allocate();
 		boolean failed = true;
 		try{
@@ -154,9 +154,9 @@ public class BufferOutputStream extends OutputStream {
 	
 	@Override
 	public void flush() throws IOException {
-		final Configuration config = session.getConfig();
+		final Configuration config = session.config();
 		final int spinCount = config.getWriteSpinCount();
-		final SocketChannel chan = session.getChannel();
+		final SocketChannel chan = session.channel();
 		for(int spins = 0; spins < spinCount;) {
 			// Step-1. flush local buffers
 			final Buffer buf = localPool.peek();
@@ -242,7 +242,7 @@ public class BufferOutputStream extends OutputStream {
 	@Override
 	public void close() throws IOException {
 		releaseBuffers();
-		session.getChannel().shutdownOutput();
+		session.channel().shutdownOutput();
     }
 	
 	protected void releaseBuffers() {

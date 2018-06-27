@@ -28,6 +28,14 @@ public class HandlerContext implements Closeable {
 		return session;
 	}
 	
+	public boolean isShutdown() {
+		return session.isShutdown();
+	}
+	
+	public EventLoop eventLoop(){
+		return session.eventLoop();
+	}
+	
 	public EventHandler handler(){
 		return handler;
 	}

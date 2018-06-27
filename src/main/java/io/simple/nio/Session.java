@@ -91,7 +91,7 @@ public class Session implements Closeable {
 		return name;
 	}
 	
-	final Session setSessionIndex(int sessIndex){
+	final Session sessionIndex(int sessIndex){
 		this.sessIndex = sessIndex;
 		return this;
 	}
@@ -134,35 +134,43 @@ public class Session implements Closeable {
 		return config.getBufferPool().allocate();
 	}
 	
-	public Configuration getConfig(){
+	public boolean isShutdown() {
+		return eventLoop.isShutdown();
+	}
+	
+	public EventLoop eventLoop() {
+		return eventLoop;
+	}
+	
+	public Configuration config(){
 		return config;
 	}
 	
-	public BufferPool getBufferPool(){
+	public BufferPool bufferPool(){
 		return config.getBufferPool();
 	}
 	
-	public FileStore getBufferStore(){
+	public FileStore bufferStore(){
 		return config.getBufferStore();
 	}
 	
-	public SocketChannel getChannel(){
+	public SocketChannel channel(){
 		return chan;
 	}
 
-	public Selector getSelector() {
+	public Selector selector() {
 		return selector;
 	}
 
-	public void setSelector(Selector selector) {
+	public void selector(Selector selector) {
 		this.selector = selector;
 	}
 
-	public SelectionKey getSelectKey() {
+	public SelectionKey selectKey() {
 		return selectKey;
 	}
 
-	public void setSelectKey(SelectionKey selectKey) {
+	public void selectKey(SelectionKey selectKey) {
 		this.selectKey = selectKey;
 	}
 

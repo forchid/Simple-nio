@@ -10,27 +10,18 @@ import io.simple.nio.BufferInputStream;
 import io.simple.nio.Configuration;
 import io.simple.nio.EventHandlerAdapter;
 import io.simple.nio.EventLoop;
+import io.simple.nio.EventLoopListener;
 import io.simple.nio.HandlerContext;
 import io.simple.nio.Session;
 
 public class EchoClient extends EventHandlerAdapter {
 	final static Logger log = LoggerFactory.getLogger(EchoClient.class);
 	
-	final byte []buf = 
-			( "0123456789klmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-			+ "9876543210abcdefghij").getBytes();
+	static final String HOST = System.getProperty("host", "127.0.0.1");
+    static final int PORT = Integer.parseInt(System.getProperty("port", "9696"));
+    static final int SIZE = Integer.parseInt(System.getProperty("size", "256"));
+	
+	final byte []buf = new byte[SIZE];
 	long ts, bytes, tps;
 	
 	public EchoClient() {}
@@ -41,6 +32,9 @@ public class EchoClient extends EventHandlerAdapter {
 		log.debug("{}: connected", ctx.session());
 		
 		// init
+		for(int i = 0; i < buf.length; ++i){
+			buf[i] = (byte)i;
+		}
 		try {
 			ctx.write(buf)
 			.flush();
@@ -58,7 +52,7 @@ public class EchoClient extends EventHandlerAdapter {
 			log.debug("{}: avalable bytes {}", session, n);
 			if(n < buf.length) {
 				if(n == 0) {
-					log.info("Peer closed");
+					log.info("{}: Peer closed", session);
 					showTps(session);
 					session.close();
 				}
@@ -73,6 +67,14 @@ public class EchoClient extends EventHandlerAdapter {
 				}
 				ctx.write(buffer);
 				bytes += buf.length;
+				++tps;
+			}
+			
+			if(ctx.isShutdown()){
+				log.info("{}: Client shutdown", session);
+				showTps(session);
+				session.close();
+				return;
 			}
 			
 			// send
@@ -86,15 +88,8 @@ public class EchoClient extends EventHandlerAdapter {
 	@Override
 	public void onFlushed(HandlerContext ctx) {
 		final Session session = ctx.session();
-		log.debug("{}: flushed bytes {}", session, buf.length);
 		bytes += buf.length;
-		++tps;
-		final long tm = System.currentTimeMillis() - ts;
-		if(tm > 60000L) {
-			showTps(session);
-			session.close();
-			return;
-		}
+		log.debug("{}: flushed - tranport bytes {}", session, bytes);
 	}
 	
 	void showTps(Session session) {
@@ -102,15 +97,33 @@ public class EchoClient extends EventHandlerAdapter {
 		log.info("{}: tranport bytes {}, tps {}", session, bytes, tps/(tm/1000L));
 	}
 	
-	public static void main(String args[]) {
-		final Configuration config = Configuration.newBuilder()
+	static class Connector extends EventLoopListener {
+		
+		@Override
+		public void init(EventLoop eventLoop){
+			for(int i = 0, n = 10; i < n; ++i){
+				eventLoop.connect();
+			}
+		}
+		
+	}
+	
+	public static void main(String args[]) throws InterruptedException {
+		Configuration config = Configuration.newBuilder()
+				.setPort(PORT)
+				.setHost(HOST)
+				.setEventLoopListener(new Connector())
 				.appendClientHandler(EchoClient.class)
 				.setName("echo-client")
 				.build();
-		final EventLoop eventLoop = new EventLoop(config);
-		for(int i = 0, n = 10; i < n; ++i){
-			eventLoop.connect();
-		}
+		EventLoop eventLoop = new EventLoop(config);
+		
+		// Shutdown process
+		// @since 2018-06-27 little-pan
+		Thread.sleep(60000L);
+		log.info("Shutdown echo client");
+		eventLoop.shutdown();
+		eventLoop.awaitTermination();
 	}
 	
 }

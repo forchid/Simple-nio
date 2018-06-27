@@ -14,7 +14,6 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,18 +28,14 @@ public class EventLoop {
 	
 	// state management
 	private volatile boolean shutdown;
-	private volatile boolean stop;
+	private volatile boolean terminated;
 	private final SelectorLoop selLoop;
 	private final Thread selThread;
 	
 	// connection queue
-	private final Queue<SocketAddress> externConnReqQueue;
+	private final Queue<SocketAddress> connReqQueue;
 	{
-		externConnReqQueue = new ConcurrentLinkedQueue<SocketAddress>();
-	}
-	private final Queue<SocketAddress> internConnReqQueue;
-	{
-		internConnReqQueue = new LinkedList<SocketAddress>();
+		connReqQueue = new LinkedList<SocketAddress>();
 	}
 	
 	public EventLoop(final Configuration config) {
@@ -73,13 +68,22 @@ public class EventLoop {
 		return shutdown;
 	}
 	
-	public boolean isStop(){
-		return stop;
+	public boolean isTerminated(){
+		return terminated;
 	}
 	
 	public EventLoop shutdown() {
 		this.shutdown = true;
 		return this;
+	}
+	
+	/**
+	 * Await the event loop terminated.
+	 * 
+	 * @throws InterruptedException if this current thread interrupted
+	 */
+	public void awaitTermination() throws InterruptedException {
+		selThread.join();
 	}
 	
 	public final boolean inEventLoop(){
@@ -99,11 +103,10 @@ public class EventLoop {
 	
 	public void connect(final SocketAddress remote) {
 		if(inEventLoop()){
-			internConnReqQueue.add(remote);
+			connReqQueue.add(remote);
 			return;
 		}
-		externConnReqQueue.add(remote);
-		selLoop.selector.wakeup();
+		throw new IllegalStateException("Not in event loop");
 	}
 	
 	protected static ServerSocketChannel openServerChan(final Configuration config) {
@@ -165,7 +168,7 @@ public class EventLoop {
 		final EventLoop eventLoop;
 		final Configuration config;
 		
-		private ServerSocketChannel ssChan;
+		private final ServerSocketChannel ssChan;
 		private Selector selector;
 		
 		private SessionManager serverSessManager;
@@ -187,14 +190,13 @@ public class EventLoop {
 			initChans();
 			log.info("Started");
 			
+			final EventLoopListener listener = config.getEventLoopListener();
 			try {
+				listener.init(eventLoop);
 				for(;;) {
 					if(eventLoop.shutdown) {
 						// shutdown normally
-						if(ssChan.isOpen()) {
-							IoUtil.close(ssChan);
-							log.info("Shutdown");
-						}
+						destroyChans();
 						if(isCompleted()) {
 							break;
 						}
@@ -236,14 +238,16 @@ public class EventLoop {
 							}
 						}
 					}
-				}
+				}// loop
 			} catch(final IOException e) {
 				log.error("Selector loop severe error", e);
 			} finally {
-				eventLoop.stop = true;
+				destroyChans();
+				eventLoop.terminated = true;
+				listener.destroy(eventLoop);
 			}
 			
-			log.info("Stopped: uptime %ds", (System.currentTimeMillis() -ts)/1000);
+			log.info("Terminated: uptime {}s", (System.currentTimeMillis() -ts)/1000);
 		}
 		
 		void initChans() {
@@ -255,17 +259,19 @@ public class EventLoop {
 			} catch (ClosedChannelException e) {}
 		}
 		
-		final void handleConnRequests() {
-			Queue<SocketAddress> queue = eventLoop.externConnReqQueue;
-			for(;;) {
-				final SocketAddress remote = queue.poll();
-				if(remote == null) {
-					break;
-				}
-				openSocketChan(selector, remote);
+		void destroyChans(){
+			if(ssChan == null){
+				// client only
+				return;
 			}
-			
-			queue = eventLoop.internConnReqQueue;
+			if(ssChan.isOpen()) {
+				IoUtil.close(ssChan);
+				log.info("Shutdown");
+			}
+		}
+		
+		final void handleConnRequests() {
+			Queue<SocketAddress> queue = eventLoop.connReqQueue;
 			for(;;) {
 				final SocketAddress remote = queue.poll();
 				if(remote == null) {
@@ -419,7 +425,7 @@ public class EventLoop {
 				so.setKeepAlive(true);
 				so.setReuseAddress(true);
 				
-				sess.setSelector(selector);
+				sess.selector(selector);
 				if(config.isAutoRead()) {
 					sess.enableRead();
 				}
@@ -440,7 +446,7 @@ public class EventLoop {
 				final Session s = sessions[i];
 				if(s == null || !s.isOpen()) {
 					sessions[i] = sess;
-					sess.setSessionIndex(i);
+					sess.sessionIndex(i);
 					if(i >= maxIndex) {
 						++maxIndex;
 					}

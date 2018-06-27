@@ -15,6 +15,8 @@ import io.simple.nio.Session;
 public class EchoServer extends EventHandlerAdapter {
 	final static Logger log = LoggerFactory.getLogger(EchoServer.class);
 	
+	static final int PORT = Integer.parseInt(System.getProperty("port", "9696"));
+	
 	public EchoServer() {
 		
 	}
@@ -54,10 +56,11 @@ public class EchoServer extends EventHandlerAdapter {
 	}
 	
 	public static void main(String args[]) {
-		final Configuration serverConfig = Configuration.newBuilder()
-			.appendServerHandler(EchoServer.class)
-			.setName("echo-server")
-			.build();
+		Configuration serverConfig = Configuration.newBuilder()
+				.setPort(PORT)
+				.appendServerHandler(EchoServer.class)
+				.setName("echo-server")
+				.build();
 		new EventLoop(serverConfig);
 	}
 	

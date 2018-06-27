@@ -16,6 +16,8 @@ public abstract class AbstractBufferPool implements BufferPool {
 	protected long pooledSize;
 	protected long curSize;
 	
+	private boolean closed;
+	
 	protected AbstractBufferPool(long poolSize) {
 		this(poolSize, DEFAULT_BUFFER_SIZE);
 	}
@@ -47,6 +49,8 @@ public abstract class AbstractBufferPool implements BufferPool {
 	
 	@Override
 	public Buffer allocate() throws BufferAllocateException {
+		checkNotClosed();
+		
 		if(curSize + bufferSize > poolSize) {
 			throw new BufferAllocateException("Exceeds pool size limit");
 		}
@@ -60,6 +64,8 @@ public abstract class AbstractBufferPool implements BufferPool {
 
 	@Override
 	public void release(Buffer buffer) {
+		checkNotClosed();
+		
 		if(buffer.bufferPool() == this) {
 			buffer.onRelease();
 			doRelease(buffer);
@@ -73,6 +79,12 @@ public abstract class AbstractBufferPool implements BufferPool {
 	
 	protected void doRelease(Buffer buffer) {
 		log.debug("{}: Release a buffer into VM - {}", this, buffer);
+	}
+	
+	protected void checkNotClosed(){
+		if(closed){
+			throw new IllegalStateException(this+" has closed");
+		}
 	}
 
 	@Override
@@ -93,6 +105,16 @@ public abstract class AbstractBufferPool implements BufferPool {
 	@Override
 	public int bufferSizeShift() {
 		return bufferSizeShift;
+	}
+	
+	@Override
+	public boolean isOpen(){
+		return !closed;
+	}
+	
+	@Override
+	public void close(){
+		closed = true;
 	}
 	
 	@Override

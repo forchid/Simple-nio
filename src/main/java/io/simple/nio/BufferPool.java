@@ -1,6 +1,8 @@
 package io.simple.nio;
 
-public interface BufferPool {
+import java.io.Closeable;
+
+public interface BufferPool extends Closeable {
 	
 	int DEFAULT_BUFFER_SIZE = 1 << 13;
 	
@@ -24,5 +26,10 @@ public interface BufferPool {
 	 * @return the buffer size shift number
 	 */
 	int bufferSizeShift();
+	
+	boolean isOpen();
+	
+	@Override
+	void close();
 
 }

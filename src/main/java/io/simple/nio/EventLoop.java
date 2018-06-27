@@ -242,7 +242,7 @@ public class EventLoop {
 			} catch(final IOException e) {
 				log.error("Selector loop severe error", e);
 			} finally {
-				destroyChans();
+				cleanup();
 				eventLoop.terminated = true;
 				listener.destroy(eventLoop);
 			}
@@ -250,7 +250,13 @@ public class EventLoop {
 			log.info("Terminated: uptime {}s", (System.currentTimeMillis() -ts)/1000);
 		}
 		
-		void initChans() {
+		final void cleanup(){
+			destroyChans();
+			config.getBufferStore().close();
+			config.getBufferPool().close();
+		}
+		
+		final void initChans() {
 			try {
 				if(ssChan != null) {
 					final int accOp = SelectionKey.OP_ACCEPT;
@@ -259,7 +265,7 @@ public class EventLoop {
 			} catch (ClosedChannelException e) {}
 		}
 		
-		void destroyChans(){
+		final void destroyChans(){
 			if(ssChan == null){
 				// client only
 				return;
@@ -281,11 +287,11 @@ public class EventLoop {
 			}
 		}
 		
-		boolean isCompleted() {
+		final boolean isCompleted() {
 			return (serverSessManager.isCompleted() && clientSessManager.isCompleted());
 		}
 		
-		void onUncaught(SelectionKey selKey, final Throwable cause) {
+		final void onUncaught(SelectionKey selKey, final Throwable cause) {
 			final Object attach = selKey.attachment();
 			if(attach == null){
 				final SelectableChannel chan = selKey.channel();
@@ -314,7 +320,7 @@ public class EventLoop {
 			}
 		}
 		
-		void onServerConnect(final ServerSocketChannel ssChan){
+		final void onServerConnect(final ServerSocketChannel ssChan){
 			SocketChannel chan = null;
 			boolean failed = true;
 			try{
@@ -339,7 +345,7 @@ public class EventLoop {
 			}
 		}
 		
-		void onClientConnect(final SelectionKey key) {
+		final void onClientConnect(final SelectionKey key) {
 			final SocketChannel chan = (SocketChannel)key.channel();
 			final Session sess = clientSessManager.allocateSession(chan);
 			if(sess != null){
@@ -347,12 +353,12 @@ public class EventLoop {
 			}
 		}
 		
-		void onRead(SelectionKey key) {
+		final void onRead(SelectionKey key) {
 			final Session sess = (Session)key.attachment();
 			sess.fireRead();
 		}
 		
-		void onWrite(SelectionKey key) {
+		final void onWrite(SelectionKey key) {
 			final Session sess = (Session)key.attachment();
 			sess.fireWrite();
 		}

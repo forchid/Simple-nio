@@ -115,6 +115,7 @@ public class EchoClient extends EventHandlerAdapter {
 				.setEventLoopListener(new Connector())
 				.appendClientHandler(EchoClient.class)
 				.setName("echo-client")
+				.setBufferDirect(true)
 				.build();
 		EventLoop eventLoop = new EventLoop(config);
 		

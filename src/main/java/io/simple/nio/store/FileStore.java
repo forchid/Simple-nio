@@ -63,11 +63,9 @@ public class FileStore implements Closeable {
 		if(region.store == this){
 			region.onRelease();
 			if(region.id == maxId - 1){
-				try {
-					chan.truncate((maxId-1) * regionSize);
-					--maxId;
-					return;
-				} catch (final IOException e) {}
+				truncate((maxId-1) * regionSize);
+				--maxId;
+				return;
 			}
 			regionPool.offer(region.clear());
 		}
@@ -176,8 +174,16 @@ public class FileStore implements Closeable {
 	@Override
 	public void close(){
 		regionPool.clear();
-		this.size = 0L;
+		truncate(size = 0L);
 		IoUtil.close(chan);
+	}
+	
+	protected void truncate(final long size){
+		try {
+			chan.truncate(size);
+		} catch (IOException e) {
+			// ignore: NOOP
+		}
 	}
 	
 	@Override

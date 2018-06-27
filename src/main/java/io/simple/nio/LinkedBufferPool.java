@@ -22,6 +22,8 @@ public class LinkedBufferPool extends AbstractBufferPool {
 
 	@Override
 	public Buffer allocate() throws BufferAllocateException {
+		checkNotClosed();
+		
 		final Buffer buffer = pool.poll();
 		if(buffer != null) {
 			if(log.isDebugEnabled()) {
@@ -51,6 +53,13 @@ public class LinkedBufferPool extends AbstractBufferPool {
 	@Override
 	protected ByteBuffer doAllocate() {
 		return ByteBuffer.allocateDirect(bufferSize);
+	}
+	
+	@Override
+	public void close(){
+		pool.clear();
+		pooledSize = 0L;
+		super.close();
 	}
 
 }

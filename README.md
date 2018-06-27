@@ -10,14 +10,14 @@ A simple java nio framework:
 > 7. Provide an entity codec framework for entity read and write.
 
 # Sample code
-EchoClient
+EchoClient.java
 ```
 public class EchoClient extends EventHandlerAdapter {
 	final static Logger log = LoggerFactory.getLogger(EchoClient.class);
 	
 	static final String HOST = System.getProperty("host", "127.0.0.1");
-    static final int PORT = Integer.parseInt(System.getProperty("port", "9696"));
-    static final int SIZE = Integer.parseInt(System.getProperty("size", "256"));
+        static final int PORT = Integer.parseInt(System.getProperty("port", "9696"));
+        static final int SIZE = Integer.parseInt(System.getProperty("size", "256"));
 	
 	final byte []buf = new byte[SIZE];
 	long ts, bytes, tps;
@@ -128,7 +128,7 @@ public class EchoClient extends EventHandlerAdapter {
 }
 ```
 
-EchoServer
+EchoServer.java
 ```
 public class EchoServer extends EventHandlerAdapter {
 	final static Logger log = LoggerFactory.getLogger(EchoServer.class);

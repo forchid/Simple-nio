@@ -24,6 +24,7 @@ public class FileStore implements Closeable {
 	public final String name;
 	public final int regionSize;
 	
+	final File file;
 	final FileChannel chan;
 	
 	private final LinkedList<FileRegion> regionPool;
@@ -42,7 +43,8 @@ public class FileStore implements Closeable {
 	}
 
 	public FileStore(String name, File file, String mode, int regionSize){
-		this.chan = openChannel(file, mode);
+		this.file = (file==null?createTempFile():file);
+		this.chan = openChannel(this.file, mode);
 		this.regionPool = new LinkedList<FileRegion>();
 		this.regionSize = regionSize;
 		this.name       = name;
@@ -176,6 +178,7 @@ public class FileStore implements Closeable {
 		regionPool.clear();
 		truncate(size = 0L);
 		IoUtil.close(chan);
+		file.delete();
 	}
 	
 	protected void truncate(final long size){
@@ -218,14 +221,24 @@ public class FileStore implements Closeable {
 	public static FileChannel openChannel(File file, String mode){
 		try {
 			if(file == null){
-				file = File.createTempFile("Simple-nio.", ".tmp");
-				file.deleteOnExit();
+				file = createTempFile();
 			}
 			if(mode == null){
 				mode = "rw";
 			}
 			return new RandomAccessFile(file, mode).getChannel();
 		} catch (final IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	static File createTempFile(){
+		final File f;
+		try{
+			f = File.createTempFile("Simple-nio.", ".tmp");
+			f.deleteOnExit();
+			return f;
+		}catch(final IOException e){
 			throw new RuntimeException(e);
 		}
 	}

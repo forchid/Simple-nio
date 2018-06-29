@@ -2,10 +2,6 @@ package io.simple.nio;
 
 import io.simple.nio.store.FileStore;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 public class Configuration {
 	
 	private boolean daemon = false;
@@ -24,14 +20,13 @@ public class Configuration {
 	private BufferPool bufferPool;
 	private FileStore  bufferStore;
 	
-	private final List<Class<? extends EventHandler>> serverHandlers;
-	private final List<Class<? extends EventHandler>> clientHandlers;
+	private SessionInitializer serverInitializer;
+	private SessionInitializer clientInitializer;
 	
 	private EventLoopListener eventLoopListener;
 	
 	public Configuration() {
-		serverHandlers = new ArrayList<Class<? extends EventHandler>>();
-		clientHandlers = new ArrayList<Class<? extends EventHandler>>();
+		
 	}
 
 	public String getName() {
@@ -90,12 +85,13 @@ public class Configuration {
 		return bufferStore;
 	}
 	
-	public List<Class<? extends EventHandler>> getServerHandlers() {
-		return Collections.unmodifiableList(serverHandlers);
+	public SessionInitializer getServerInitializer() {
+		return serverInitializer;
 	}
+
 	
-	public List<Class<? extends EventHandler>> getClientHandlers() {
-		return Collections.unmodifiableList(clientHandlers);
+	public SessionInitializer getClientInitializer() {
+		return clientInitializer;
 	}
 	
 	public EventLoopListener getEventLoopListener(){
@@ -230,23 +226,13 @@ public class Configuration {
 			return this;
 		}
 		
-		public Builder appendServerHandler(EventHandler handler) {
-			config.serverHandlers.add(handler.getClass());
+		public Builder setServerInitializer(SessionInitializer serverInitializer) {
+			config.serverInitializer = serverInitializer;
 			return this;
 		}
 		
-		public Builder appendServerHandler(Class<? extends EventHandler> clazz) {
-			config.serverHandlers.add(clazz);
-			return this;
-		}
-		
-		public Builder appendClientHandler(EventHandler handler) {
-			config.clientHandlers.add(handler.getClass());
-			return this;
-		}
-		
-		public Builder appendClientHandler(Class<? extends EventHandler> clazz) {
-			config.clientHandlers.add(clazz);
+		public Builder setClientInitializer(SessionInitializer clientInitializer) {
+			config.clientInitializer = clientInitializer;
 			return this;
 		}
 		
@@ -256,6 +242,10 @@ public class Configuration {
 		}
 		
 		public Configuration build() {
+			if(config.serverInitializer == null && config.clientInitializer == null) {
+				throw new IllegalArgumentException("No server or client session initializer");
+			}
+			
 			final int maxConns = config.maxConns;
 			if(maxConns < 1) {
 				throw new IllegalArgumentException("maxConns must bigger than 0: "+config.maxConns);

@@ -12,14 +12,12 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Queue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.simple.util.IoUtil;
-import io.simple.util.ReflectUtil;
 
 public class EventLoop {
 	final static Logger log = LoggerFactory.getLogger(EventLoop.class);
@@ -110,7 +108,7 @@ public class EventLoop {
 	}
 	
 	protected static ServerSocketChannel openServerChan(final Configuration config) {
-		if(config.getServerHandlers().size() == 0) {
+		if(config.getServerInitializer() == null) {
 			return null;
 		}
 		ServerSocketChannel chan = null;
@@ -179,10 +177,17 @@ public class EventLoop {
 			this.config    = eventLoop.config;
 			this.ssChan    = ssChan;
 			this.selector  = selector;
-			this.serverSessManager = new SessionManager(eventLoop, selector, 
-					"serverSess", (ssChan==null)?0:config.getMaxServerConns(), config.getServerHandlers());
-			this.clientSessManager = new SessionManager(eventLoop, selector, 
-					"clientSess", config.getMaxClientConns(), config.getClientHandlers());
+			
+			int maxServerConns = config.getMaxServerConns();
+			if(ssChan == null) {
+				maxServerConns = 0;
+			}
+			this.serverSessManager = new SessionManager(eventLoop, selector, "serverSess", 
+					maxServerConns, config.getServerInitializer());
+			
+			int maxClientConns = config.getMaxClientConns();
+			this.clientSessManager = new SessionManager(eventLoop, selector,  "clientSess", 
+					maxClientConns, config.getClientInitializer());
 		}
 
 		public void run() {
@@ -376,15 +381,21 @@ public class EventLoop {
 		private final Session sessions[];
 		private long nextSessionId;
 		private int maxIndex;
-		final List<Class<? extends EventHandler>> handlers;
+		
+		final SessionInitializer sessionInitializer;
 		
 		public SessionManager(EventLoop eventLoop, Selector selector, 
-				String name, int maxConns, List<Class<? extends EventHandler>> handlers){
+				String name, int maxConns, SessionInitializer sessionInitializer){
 			this.eventLoop = eventLoop;
 			this.selector  = selector;
 			this.name      = name;
 			this.sessions  = new Session[maxConns];
-			this.handlers  = handlers;
+			
+			if(sessionInitializer == null) {
+				this.sessionInitializer = SessionInitializer.NOOP;
+			}else {
+				this.sessionInitializer = sessionInitializer;
+			}
 		}
 		
 		public boolean isCompleted() {
@@ -409,12 +420,9 @@ public class EventLoop {
 			Session sess = null;
 			try {
 				sess = new Session(name, nextSessionId++, this, chan, eventLoop);
-				for(final Class<? extends EventHandler> c : handlers) {
-					final EventHandler handler = ReflectUtil.newObject(c);
-					sess.addHandler(handler);
-				}
+				sessionInitializer.initSession(sess);
 			}catch(final Throwable cause) {
-				log.error("Add event handler error", cause);
+				log.error("Initialize session error", cause);
 				IoUtil.close(sess);
 				return null;
 			}

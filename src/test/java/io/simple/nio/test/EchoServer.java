@@ -11,6 +11,7 @@ import io.simple.nio.EventHandlerAdapter;
 import io.simple.nio.EventLoop;
 import io.simple.nio.HandlerContext;
 import io.simple.nio.Session;
+import io.simple.nio.SessionInitializer;
 
 public class EchoServer extends EventHandlerAdapter {
 	final static Logger log = LoggerFactory.getLogger(EchoServer.class);
@@ -55,10 +56,19 @@ public class EchoServer extends EventHandlerAdapter {
 		}
 	}
 	
+	static class ServerInitializer implements SessionInitializer {
+
+		@Override
+		public void initSession(Session session) {
+			session.addHandler(new EchoServer());
+		}
+		
+	}
+	
 	public static void main(String args[]) {
 		Configuration serverConfig = Configuration.newBuilder()
 				.setPort(PORT)
-				.appendServerHandler(EchoServer.class)
+				.setServerInitializer(new ServerInitializer())
 				.setName("echo-server")
 				.build();
 		new EventLoop(serverConfig);

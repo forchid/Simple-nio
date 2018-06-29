@@ -16,8 +16,8 @@ public class EchoClient extends EventHandlerAdapter {
 	final static Logger log = LoggerFactory.getLogger(EchoClient.class);
 	
 	static final String HOST = System.getProperty("host", "127.0.0.1");
-        static final int PORT = Integer.parseInt(System.getProperty("port", "9696"));
-        static final int SIZE = Integer.parseInt(System.getProperty("size", "256"));
+	static final int PORT = Integer.parseInt(System.getProperty("port", "9696"));
+	static final int SIZE = Integer.parseInt(System.getProperty("size", "256"));
 	
 	final byte []buf = new byte[SIZE];
 	long ts, bytes, tps;
@@ -106,12 +106,21 @@ public class EchoClient extends EventHandlerAdapter {
 		
 	}
 	
+	static class ClientInitializer implements SessionInitializer {
+
+		@Override
+		public void initSession(Session session) {
+			session.addHandler(new EchoClient());
+		}
+		
+	}
+	
 	public static void main(String args[]) throws InterruptedException {
 		Configuration config = Configuration.newBuilder()
 				.setPort(PORT)
 				.setHost(HOST)
 				.setEventLoopListener(new Connector())
-				.appendClientHandler(EchoClient.class)
+				.setClientInitializer(new ClientInitializer())
 				.setName("echo-client")
 				.setBufferDirect(true)
 				.build();
@@ -173,10 +182,19 @@ public class EchoServer extends EventHandlerAdapter {
 		}
 	}
 	
+	static class ServerInitializer implements SessionInitializer {
+
+		@Override
+		public void initSession(Session session) {
+			session.addHandler(new EchoServer());
+		}
+		
+	}
+	
 	public static void main(String args[]) {
 		Configuration serverConfig = Configuration.newBuilder()
 				.setPort(PORT)
-				.appendServerHandler(EchoServer.class)
+				.setServerInitializer(new ServerInitializer())
 				.setName("echo-server")
 				.build();
 		new EventLoop(serverConfig);

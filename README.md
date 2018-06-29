@@ -6,8 +6,8 @@ A simple java nio framework:
 > 3. Byte stream style IO for simple buffer access and management.
 > 4. Single event loop that supports server and client channels.
 > 5. Support channel read and write HWM for rate limit.
-> 6. Support timing events such as read, write and background idle.
-> 7. Provide an entity codec framework for entity read and write.
+> 6. Support timing events such as read, write and connect idle.
+> 7. Provide a codec framework for message read and write.
 
 # Sample code
 EchoClient.java

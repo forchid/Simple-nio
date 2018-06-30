@@ -1,10 +1,10 @@
 package io.simple.nio;
 
 /**
- * The session initializer that initialize session handlers before adding
- * server or client handler classes, which are added in configuration.
- * 
- * The initializer can configure session scope event handlers.
+ * <p>
+ * The session initializer that initialize session handlers, configure 
+ * session scope event handlers.
+ * </p>
  * 
  * @author little-pan
  * @since 2018-06-29

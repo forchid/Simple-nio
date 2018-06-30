@@ -12,6 +12,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Queue;
 
 import org.slf4j.Logger;
@@ -35,6 +36,9 @@ public class EventLoop {
 	{
 		connReqQueue = new LinkedList<SocketAddress>();
 	}
+	
+	// time task queue
+	private final List<TimeTask> timeTaskQueue = new LinkedList<TimeTask>();
 	
 	public EventLoop(final Configuration config) {
 		ServerSocketChannel ssChan = null;
@@ -102,6 +106,14 @@ public class EventLoop {
 	public void connect(final SocketAddress remote) {
 		if(inEventLoop()){
 			connReqQueue.add(remote);
+			return;
+		}
+		throw new IllegalStateException("Not in event loop");
+	}
+	
+	public void schedule(TimeTask task) {
+		if(inEventLoop()){
+			timeTaskQueue.add(task);
 			return;
 		}
 		throw new IllegalStateException("Not in event loop");
@@ -199,7 +211,9 @@ public class EventLoop {
 			try {
 				listener.init(eventLoop);
 				for(;;) {
-					if(eventLoop.shutdown) {
+					// 0. handle shutdown event
+					final boolean shutdown = eventLoop.shutdown;
+					if(shutdown) {
 						// shutdown normally
 						destroyChans();
 						if(isCompleted()) {
@@ -207,12 +221,24 @@ public class EventLoop {
 						}
 					}
 					
-					handleConnRequests();
+					// 1. handle connect events
+					if(!shutdown) {
+						handleConnRequests();
+					}
 					
-					// do-select
-					final int events = selector.select();
+					// 2. handle file events
+					final long nearest = nearestScheduleTime();
+					final int events;
+					final Selector sel = selector;
+					if(nearest == -1L) {
+						events = sel.select();
+					}else if(nearest == 0L) {
+						events = sel.selectNow();
+					}else {
+						events = sel.select(nearest);
+					}
 					if(events > 0) {
-						final Iterator<SelectionKey> i = selector.selectedKeys().iterator();
+						final Iterator<SelectionKey> i = sel.selectedKeys().iterator();
 						for(; i.hasNext(); i.remove()) {
 							final SelectionKey key = i.next();
 							
@@ -243,6 +269,10 @@ public class EventLoop {
 							}
 						}
 					}
+					
+					// 3. handle time events
+					executeTimeTasks();
+					
 				}// loop
 			} catch(final IOException e) {
 				log.error("Selector loop severe error", e);
@@ -253,6 +283,55 @@ public class EventLoop {
 			}
 			
 			log.info("Terminated: uptime {}s", (System.currentTimeMillis() -ts)/1000);
+		}
+		
+		final void executeTimeTasks() {
+			final long cur = System.currentTimeMillis();
+			final Iterator<TimeTask> i = eventLoop.timeTaskQueue.iterator();
+			for(; i.hasNext(); ) {
+				final TimeTask task = i.next();
+				if(task.isCancel()) {
+					i.remove();
+					continue;
+				}
+				final long tm = task.executeTime();
+				if(tm <= cur) {
+					try {
+						task.run();
+					} catch(final Throwable cause){
+						log.debug("Time task execution error", cause);
+					} finally {
+						final long period = task.period();
+						if(period <= 0L) {
+							i.remove();
+						}else {
+							task.executeTime(tm + period);
+						}
+					}
+				}
+			}
+		}
+		
+		final long nearestScheduleTime() {
+			final long cur = System.currentTimeMillis();
+			long nearest   = -1L;
+			final Iterator<TimeTask> i = eventLoop.timeTaskQueue.iterator();
+			for(; i.hasNext(); ) {
+				final TimeTask task = i.next();
+				if(task.isCancel()) {
+					i.remove();
+					continue;
+				}
+				final long tm = task.executeTime();
+				if(tm <= cur) {
+					nearest = 0L;
+					break;
+				}
+				if(nearest == -1L || tm - cur < nearest) {
+					nearest = tm - cur;
+				}
+			}
+			return nearest;
 		}
 		
 		final void cleanup(){

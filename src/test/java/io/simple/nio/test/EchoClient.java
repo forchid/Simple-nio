@@ -14,6 +14,7 @@ import io.simple.nio.EventLoopListener;
 import io.simple.nio.HandlerContext;
 import io.simple.nio.Session;
 import io.simple.nio.SessionInitializer;
+import io.simple.nio.TimeTask;
 
 public class EchoClient extends EventHandlerAdapter {
 	final static Logger log = LoggerFactory.getLogger(EchoClient.class);
@@ -112,8 +113,14 @@ public class EchoClient extends EventHandlerAdapter {
 	static class ClientInitializer implements SessionInitializer {
 
 		@Override
-		public void initSession(Session session) {
+		public void initSession(final Session session) {
 			session.addHandler(new EchoClient());
+			session.schedule(new TimeTask(10000L) {
+				@Override
+				public void run() {
+					log.info("{}: Client time task executes", session);
+				}
+			});
 		}
 		
 	}

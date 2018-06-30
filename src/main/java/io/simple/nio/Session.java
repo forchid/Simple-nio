@@ -7,6 +7,8 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -50,6 +52,9 @@ public class Session implements Closeable {
 	// Handler chain
 	private final HandlerContext head, tail;
 	
+	// time task queue
+	private final LinkedList<TimeTask> timeTasks;
+	
 	public Session(final String namePrefix, final long id, 
 			SessionManager sessManager, SocketChannel chan, EventLoop eventLoop) {
 		this.chan = chan;
@@ -68,6 +73,8 @@ public class Session implements Closeable {
 		// buffers
 		this.in  = new BufferInputStream(this);
 		this.out = new BufferOutputStream(this);
+		
+		this.timeTasks = new LinkedList<TimeTask>();
 	}
 	
 	public boolean isOpen() {
@@ -82,6 +89,9 @@ public class Session implements Closeable {
 			IoUtil.close(chan);
 			chan = null;
 			sessManager.releaseSession(this, sessIndex);
+			for(final TimeTask t : timeTasks) {
+				t.cancel();
+			}
 			log.debug("{}: closed", this);
 		}
 	}
@@ -308,6 +318,28 @@ public class Session implements Closeable {
 		disableWrite();
 		flushing = false;
 		head.fireFlushed();
+	}
+	
+	public Session cancel(TimeTask task) {
+		try {
+			final Iterator<TimeTask> i = timeTasks.iterator();
+			for(;i.hasNext();) {
+				final TimeTask t = i.next();
+				if(t == task) {
+					i.remove();
+					break;
+				}
+			}
+			return this;
+		}finally {
+			task.cancel();
+		}
+	}
+	
+	public Session schedule(TimeTask task) {
+		eventLoop.schedule(task);
+		timeTasks.offer(task);
+		return this;
 	}
 	
 	static class HeadContext extends HandlerContext {

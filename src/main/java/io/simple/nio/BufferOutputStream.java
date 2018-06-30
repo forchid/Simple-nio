@@ -2,6 +2,7 @@ package io.simple.nio;
 
 import io.simple.nio.store.FileRegion;
 import io.simple.nio.store.FileStore;
+import io.simple.util.ArrayQueue;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -26,7 +27,7 @@ public class BufferOutputStream extends OutputStream {
 	protected final Session session;
 	
 	// buffer pool
-	protected LinkedList<Buffer> localPool;
+	protected ArrayQueue<Buffer> localPool;
 	private int remaining, maxBuffers, buffers;
 	
 	// file backed buffer
@@ -35,7 +36,6 @@ public class BufferOutputStream extends OutputStream {
 	
 	public BufferOutputStream(final Session session) {
 		this.session   = session;
-		this.localPool = new LinkedList<Buffer>();
 		this.regionPool= new LinkedList<FileRegion>();
 		
 		final Configuration config = session.config();
@@ -49,6 +49,15 @@ public class BufferOutputStream extends OutputStream {
 	public void setMaxBuffers(int maxBuffers) {
 		if(maxBuffers < 1) {
 			throw new IllegalArgumentException("maxBuffers must bigger than 0: " + maxBuffers);
+		}
+		if(this.localPool == null) {
+			this.localPool = new ArrayQueue<Buffer>(maxBuffers);
+		}else {
+			final ArrayQueue<Buffer> pool = this.localPool;
+			final int cap = pool.capacity();
+			if(maxBuffers > cap || (pool.size() < maxBuffers && maxBuffers < cap)) {
+				this.localPool = ArrayQueue.drainQueue(pool, maxBuffers);
+			}
 		}
 		this.maxBuffers = maxBuffers;
 	}

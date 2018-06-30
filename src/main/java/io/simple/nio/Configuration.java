@@ -270,7 +270,7 @@ public class Configuration {
 			final long poolSize = config.poolSize;
 			final int bufferSize= config.bufferSize;
 			if(config.isBufferDirect()) {
-				config.bufferPool = new LinkedBufferPool(poolSize, bufferSize);
+				config.bufferPool = new ArrayBufferPool(poolSize, bufferSize);
 			}else {
 				config.bufferPool = new SimpleBufferPool(poolSize, bufferSize);
 			}

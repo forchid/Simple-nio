@@ -5,6 +5,8 @@ import java.nio.ByteBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.simple.util.MathUtil;
+
 public abstract class AbstractBufferPool implements BufferPool {
 	
 	final static Logger log = LoggerFactory.getLogger(AbstractBufferPool.class);
@@ -31,18 +33,7 @@ public abstract class AbstractBufferPool implements BufferPool {
 		if(bufferSize <= 0) {
 			throw new IllegalArgumentException("bufferSize must bigger than 0: " + bufferSize);
 		}
-		int shift = 0;
-		for(int i = 0; i < 32; ++i) {
-			if((bufferSize & 1) == 1) {
-				if((bufferSize>>1) > 0) {
-					throw new IllegalArgumentException("bufferSize must be pow of 2: " + bufferSize);
-				}
-				shift = i;
-				break;
-			}
-			bufferSize >>= 1;
-		}
-		this.bufferSizeShift = shift;
+		this.bufferSizeShift = MathUtil.bitShift(bufferSize);
 		log.info("{}: poolSize = {}, bufferSize = {}, bufferSizeShift = {}", 
 				this, poolSize, bufferSize, bufferSizeShift);
 	}

@@ -4,10 +4,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.util.LinkedList;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.simple.util.ArrayQueue;
 
 /**
  * <p>
@@ -35,7 +36,7 @@ public class BufferInputStream extends InputStream {
     
     // channel and buffers
 	protected final Session session;
-	protected LinkedList<Buffer> localPool;
+	protected ArrayQueue<Buffer> localPool;
 	private int available, maxBuffers;
 	
 	// mark support
@@ -43,8 +44,6 @@ public class BufferInputStream extends InputStream {
 	
 	public BufferInputStream(final Session session) {
 		this.session   = session;
-		this.localPool = new LinkedList<Buffer>();
-		
 		final Configuration config = session.config();
 		setMaxBuffers(config.getMaxReadBuffers());
 	}
@@ -56,6 +55,15 @@ public class BufferInputStream extends InputStream {
 	public void setMaxBuffers(int maxBuffers) {
 		if(maxBuffers < 1) {
 			throw new IllegalArgumentException("maxBuffers must bigger than 0: " + maxBuffers);
+		}
+		if(this.localPool == null) {
+			this.localPool = new ArrayQueue<Buffer>(maxBuffers);
+		}else {
+			final ArrayQueue<Buffer> pool = this.localPool;
+			final int cap = pool.capacity();
+			if(maxBuffers > cap || (pool.size() < maxBuffers && maxBuffers < cap)) {
+				this.localPool = ArrayQueue.drainQueue(pool, maxBuffers);
+			}
 		}
 		this.maxBuffers = maxBuffers;
 	}

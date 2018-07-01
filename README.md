@@ -109,22 +109,21 @@ public class EchoClient extends EventHandlerAdapter {
 	static class ClientInitializer implements SessionInitializer {
 
 		@Override
-		public void initSession(Session session) {
+		public void initSession(final Session session) {
 			session.addHandler(new EchoClient());
 		}
 		
 	}
 	
 	public static void main(String args[]) throws InterruptedException {
-		Configuration config = Configuration.newBuilder()
-				.setPort(PORT)
-				.setHost(HOST)
-				.setEventLoopListener(new Connector())
-				.setClientInitializer(new ClientInitializer())
-				.setName("echo-client")
-				.setBufferDirect(true)
-				.build();
-		EventLoop eventLoop = new EventLoop(config);
+		final EventLoop eventLoop = Configuration.newBuilder()
+			.setPort(PORT)
+			.setHost(HOST)
+			.setEventLoopListener(new Connector())
+			.setClientInitializer(new ClientInitializer())
+			.setName("echo-client")
+			.setBufferDirect(true)
+			.boot();
 		
 		// Shutdown process
 		// @since 2018-06-27 little-pan
@@ -192,12 +191,11 @@ public class EchoServer extends EventHandlerAdapter {
 	}
 	
 	public static void main(String args[]) {
-		Configuration serverConfig = Configuration.newBuilder()
-				.setPort(PORT)
-				.setServerInitializer(new ServerInitializer())
-				.setName("echo-server")
-				.build();
-		new EventLoop(serverConfig);
+		Configuration.newBuilder()
+			.setPort(PORT)
+			.setServerInitializer(new ServerInitializer())
+			.setName("echo-server")
+			.boot();
 	}
 	
 }

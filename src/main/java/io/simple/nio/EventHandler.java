@@ -11,10 +11,18 @@ public interface EventHandler {
 	void onConnected(HandlerContext ctx);
 	
 	void onRead(HandlerContext ctx, Object in);
+	
+	/**
+	 * Invoked after read more data from channel.
+	 * @param ctx
+	 */
+	void onReadComplete(HandlerContext ctx);
 
 	void onWrite(HandlerContext ctx, Object out);
 	
 	void onFlushed(HandlerContext ctx);
+	
+	void onUserEvent(HandlerContext ctx, Object ev);
 
 	void onCause(HandlerContext ctx, Throwable cause);
 

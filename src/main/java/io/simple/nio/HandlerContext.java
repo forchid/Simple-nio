@@ -144,6 +144,12 @@ public class HandlerContext implements Closeable {
 		}
 	}
 	
+	public void fireReadComplete() {
+		if(next != null){
+			next.handler.onReadComplete(next);
+		}
+	}
+	
 	public void fireWrite(Object out){
 		if(prev != null){
 			prev.handler.onWrite(prev, out);
@@ -153,6 +159,12 @@ public class HandlerContext implements Closeable {
 	public void fireFlushed(){
 		if(next != null){
 			next.handler.onFlushed(next);
+		}
+	}
+	
+	public void fireUserEvent(Object ev) {
+		if(next != null){
+			next.handler.onUserEvent(next, ev);
 		}
 	}
 	

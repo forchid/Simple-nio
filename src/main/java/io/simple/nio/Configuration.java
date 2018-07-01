@@ -12,6 +12,7 @@ public class Configuration {
 	private int backlog  = 1024;
 	private int maxConns = 10240, maxServerConns, maxClientConns;
 	private int maxReadBuffers = 8, maxWriteBuffers = 64, writeSpinCount = 16;
+	private long readTimeout = 30000L, writeTimeout = 60000L;
 	
 	private boolean autoRead     = true;
 	private boolean bufferDirect = true;
@@ -135,6 +136,14 @@ public class Configuration {
 		return writeSpinCount;
 	}
 	
+	public long getReadTimeout() {
+		return readTimeout;
+	}
+
+	public long getWriteTimeout() {
+		return writeTimeout;
+	}
+	
 	public final static Builder newBuilder() {
 		return new Builder();
 	}
@@ -238,6 +247,16 @@ public class Configuration {
 		
 		public Builder setEventLoopListener(EventLoopListener eventLoopListener){
 			config.eventLoopListener = eventLoopListener;
+			return this;
+		}
+		
+		public Builder setReadTimeout(long readTimeout) {
+			config.readTimeout = readTimeout;
+			return this;
+		}
+		
+		public Builder setWriteTimeout(long writeTimeout) {
+			config.writeTimeout = writeTimeout;
 			return this;
 		}
 		

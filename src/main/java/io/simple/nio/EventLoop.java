@@ -12,7 +12,6 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Queue;
 
 import org.slf4j.Logger;
@@ -38,7 +37,10 @@ public class EventLoop {
 	}
 	
 	// time task queue
-	private final List<TimeTask> timeTaskQueue = new LinkedList<TimeTask>();
+	private final LinkedList<TimeTask> timeTaskQueue = new LinkedList<TimeTask>();
+	// used to avoid CME
+	private final LinkedList<TimeTask> backTimeQueue = new LinkedList<TimeTask>();
+	private boolean executingTimeTask;
 	
 	public EventLoop(final Configuration config) {
 		ServerSocketChannel ssChan = null;
@@ -113,7 +115,11 @@ public class EventLoop {
 	
 	public void schedule(TimeTask task) {
 		if(inEventLoop()){
-			timeTaskQueue.add(task);
+			if(executingTimeTask) {
+				backTimeQueue.add(task);
+			}else {
+				timeTaskQueue.add(task);
+			}
 			return;
 		}
 		throw new IllegalStateException("Not in event loop");
@@ -287,29 +293,46 @@ public class EventLoop {
 		
 		final void executeTimeTasks() {
 			final long cur = System.currentTimeMillis();
-			final Iterator<TimeTask> i = eventLoop.timeTaskQueue.iterator();
-			for(; i.hasNext(); ) {
-				final TimeTask task = i.next();
-				if(task.isCancel()) {
-					i.remove();
-					continue;
-				}
-				final long tm = task.executeTime();
-				if(tm <= cur) {
-					try {
-						task.run();
-					} catch(final Throwable cause){
-						log.debug("Time task execution error", cause);
-					} finally {
-						final long period = task.period();
-						if(period <= 0L) {
-							i.remove();
-						}else {
-							task.executeTime(tm + period);
+			final LinkedList<TimeTask> q = eventLoop.timeTaskQueue;
+			final Iterator<TimeTask> i   = q.iterator();
+			eventLoop.executingTimeTask  = true;
+			try {
+				for(; i.hasNext(); ) {
+					final TimeTask task = i.next();
+					if(task.isCancel()) {
+						i.remove();
+						continue;
+					}
+					final long tm = task.executeTime();
+					if(tm <= cur) {
+						try {
+							task.run();
+						} catch(final Throwable cause){
+							log.debug("Time task execution error", cause);
+						} finally {
+							final long period = task.period();
+							if(period <= 0L) {
+								i.remove();
+							}else {
+								task.executeTime(tm + period);
+							}
 						}
 					}
 				}
+			}finally {
+				eventLoop.executingTimeTask = false;
 			}
+			
+			// merge time tasks
+			final LinkedList<TimeTask> b = eventLoop.backTimeQueue;
+			for(;;) {
+				final TimeTask t = b.poll();
+				if(t == null) {
+					break;
+				}
+				q.offer(t);
+			}
+			
 		}
 		
 		final long nearestScheduleTime() {
@@ -499,6 +522,13 @@ public class EventLoop {
 			Session sess = null;
 			try {
 				sess = new Session(name, nextSessionId++, this, chan, eventLoop);
+				
+				// Read or write timeout handler.
+				// @since 2018-07-01 little-pan
+				final long readTimeout  = config.getReadTimeout();
+				final long writeTimeout = config.getWriteTimeout();
+				sess.setTimeoutHandler(new IdleStateHandler(readTimeout, writeTimeout));
+				
 				sessionInitializer.initSession(sess);
 			}catch(final Throwable cause) {
 				log.error("Initialize session error", cause);

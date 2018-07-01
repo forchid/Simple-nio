@@ -54,6 +54,7 @@ public class Session implements Closeable {
 	
 	// time task queue
 	private final LinkedList<TimeTask> timeTasks;
+	private IdleStateHandler timeoutHandler;
 	
 	public Session(final String namePrefix, final long id, 
 			SessionManager sessManager, SocketChannel chan, EventLoop eventLoop) {
@@ -124,6 +125,9 @@ public class Session implements Closeable {
 	}
 	
 	public Session removeHandler(final EventHandler handler) {
+		if(handler == timeoutHandler) {
+			throw new UnsupportedOperationException("Can't remove timeout handler");
+		}
 		HandlerContext ctx = this.head.next;
 		for(; ctx != this.tail; ctx = ctx.next) {
 			final EventHandler h = ctx.handler();
@@ -220,22 +224,27 @@ public class Session implements Closeable {
 		return this;
 	}
 	
-	public Session fireConnected(){
+	final Session fireConnected(){
 		head.fireConnected();
 		return this;
 	}
 	
-	public Session fireRead() {
+	final Session fireRead() {
 		head.fireRead(in);
 		return this;
 	}
 	
-	public Session fireWrite(){
+	final Session fireReadComplete() {
+		head.fireReadComplete();
+		return this;
+	}
+	
+	final Session fireWrite(){
 		tail.fireWrite(out);
 		return this;
 	}
 	
-	public Session fireCause(Throwable cause) {
+	final Session fireCause(Throwable cause) {
 		head.fireCause(cause);
 		return this;
 	}
@@ -342,6 +351,32 @@ public class Session implements Closeable {
 		return this;
 	}
 	
+	public long readTimeout() {
+		return timeoutHandler.readIdleTime();
+	}
+	
+	public Session readTimeout(long readTimeout) {
+		timeoutHandler.readIdleTime(readTimeout);
+		return this;
+	}
+	
+	public long writeTimeout() {
+		return timeoutHandler.writeIdleTime();
+	}
+	
+	public Session writeTimeout(long writeTimeout) {
+		timeoutHandler.writeIdleTime(writeTimeout);
+		return this;
+	}
+	
+	final void setTimeoutHandler(IdleStateHandler timeoutHandler) {
+		if(this.timeoutHandler != null) {
+			throw new IllegalStateException(this+": timeout handler existing");
+		}
+		this.timeoutHandler = timeoutHandler;
+		addHandler(timeoutHandler);
+	}
+	
 	static class HeadContext extends HandlerContext {
 		
 		final Session session;
@@ -351,6 +386,7 @@ public class Session implements Closeable {
 			this.session = session;
 		}
 		
+		@Override
 		public void fireRead(final Object in){
 			final EventHandler handler = next.handler;
 			if(in == null){
@@ -371,6 +407,7 @@ public class Session implements Closeable {
 			this.session = session;
 		}
 		
+		@Override
 		public void fireWrite(final Object out){
 			if(session.flushing){
 				session.flush();
@@ -394,6 +431,7 @@ public class Session implements Closeable {
 			
 		}
 		
+		@Override
 		public void onCause(HandlerContext ctx, final Throwable cause) {
 			log.warn("Close session for uncaught exception", cause);
 			ctx.close();

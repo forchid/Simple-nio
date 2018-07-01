@@ -174,9 +174,10 @@ public class BufferInputStream extends InputStream {
 			}
 		}
 		
-		final SocketChannel chan= session.channel();
+		final SocketChannel chan = session.channel();
+		final int oldAvailable   = available;
 		// prepare for channel read
-		final ByteBuffer buffer = headBuffer();
+		final ByteBuffer buffer  = headBuffer();
 		final int cap = buffer.capacity();
 		final int pos = buffer.position();
 		final int lim = buffer.limit();
@@ -200,6 +201,9 @@ public class BufferInputStream extends InputStream {
 				}
 				
 				if(i <= 0 || buffers >= maxBuffers) {
+					if(oldAvailable != available) {
+						session.fireReadComplete();
+					}
 					return available;
 				}
 				

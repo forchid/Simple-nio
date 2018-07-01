@@ -158,7 +158,7 @@ public class Configuration {
 	
 	public static class Builder {
 		
-		final Configuration config = new Configuration();
+		private Configuration config = new Configuration();
 		
 		public Builder() {
 			
@@ -274,6 +274,8 @@ public class Configuration {
 		}
 		
 		public Configuration build() {
+			final Configuration config  = this.config;
+			
 			if(config.serverInitializer == null && config.clientInitializer == null) {
 				throw new IllegalArgumentException("No server or client session initializer");
 			}
@@ -299,20 +301,30 @@ public class Configuration {
 				throw new IllegalArgumentException("writeSpinCount must bigger than 0: "+config.writeSpinCount);
 			}
 			
-			final long poolSize = config.poolSize;
-			final int bufferSize= config.bufferSize;
+			final long poolSize  = config.poolSize;
+			final int bufferSize = config.bufferSize;
+			config.bufferStore   = FileStore.open("BufferStore", bufferSize);
 			if(config.isBufferDirect()) {
 				config.bufferPool = new ArrayBufferPool(poolSize, bufferSize);
 			}else {
 				config.bufferPool = new SimpleBufferPool(poolSize, bufferSize);
 			}
-			config.bufferStore    = FileStore.open("BufferStore", bufferSize);
 			
 			if(config.eventLoopListener == null){
 				config.eventLoopListener = EventLoopListener.NOOP;
 			}
 			
+			// Create a new config for the building safe
+			this.config = new Configuration();
+			setServerInitializer(config.serverInitializer);
+			setClientInitializer(config.clientInitializer);
+			setEventLoopListener(config.eventLoopListener);
+			
 			return config;
+		}
+		
+		public EventLoop boot() {
+			return new EventLoop(build());
 		}
 		
 	}

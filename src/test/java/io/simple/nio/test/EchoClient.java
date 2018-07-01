@@ -119,15 +119,14 @@ public class EchoClient extends EventHandlerAdapter {
 	}
 	
 	public static void main(String args[]) throws InterruptedException {
-		Configuration config = Configuration.newBuilder()
-				.setPort(PORT)
-				.setHost(HOST)
-				.setEventLoopListener(new Connector())
-				.setClientInitializer(new ClientInitializer())
-				.setName("echo-client")
-				.setBufferDirect(true)
-				.build();
-		EventLoop eventLoop = new EventLoop(config);
+		final EventLoop eventLoop = Configuration.newBuilder()
+			.setPort(PORT)
+			.setHost(HOST)
+			.setEventLoopListener(new Connector())
+			.setClientInitializer(new ClientInitializer())
+			.setName("echo-client")
+			.setBufferDirect(true)
+			.boot();
 		
 		// Shutdown process
 		// @since 2018-06-27 little-pan

@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 import io.simple.nio.BufferInputStream;
 import io.simple.nio.Configuration;
 import io.simple.nio.EventHandlerAdapter;
-import io.simple.nio.EventLoop;
 import io.simple.nio.HandlerContext;
 import io.simple.nio.Session;
 import io.simple.nio.SessionInitializer;
@@ -66,12 +65,11 @@ public class EchoServer extends EventHandlerAdapter {
 	}
 	
 	public static void main(String args[]) {
-		Configuration serverConfig = Configuration.newBuilder()
-				.setPort(PORT)
-				.setServerInitializer(new ServerInitializer())
-				.setName("echo-server")
-				.build();
-		new EventLoop(serverConfig);
+		Configuration.newBuilder()
+			.setPort(PORT)
+			.setServerInitializer(new ServerInitializer())
+			.setName("echo-server")
+			.boot();
 	}
 	
 }

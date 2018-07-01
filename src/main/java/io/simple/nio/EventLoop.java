@@ -1,9 +1,11 @@
 package io.simple.nio;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
+import java.net.SocketException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
@@ -31,9 +33,9 @@ public class EventLoop {
 	private final Thread selThread;
 	
 	// connection queue
-	private final Queue<SocketAddress> connReqQueue;
+	private final Queue<ConnectionRequest> connReqQueue;
 	{
-		connReqQueue = new LinkedList<SocketAddress>();
+		connReqQueue = new LinkedList<ConnectionRequest>();
 	}
 	
 	// time task queue
@@ -78,6 +80,7 @@ public class EventLoop {
 	
 	public EventLoop shutdown() {
 		this.shutdown = true;
+		selLoop.selector.wakeup();
 		return this;
 	}
 	
@@ -101,13 +104,25 @@ public class EventLoop {
 		connect(config.getHost(), config.getPort());
 	}
 	
+	public void connect(long timeout) {
+		connect(config.getHost(), config.getPort(), timeout);
+	}
+	
 	public void connect(final String remoteHost, int remotePort) {
-		connect(new InetSocketAddress(remoteHost, remotePort));
+		connect(new InetSocketAddress(remoteHost, remotePort), config.getConnectTimeout());
+	}
+	
+	public void connect(final String remoteHost, int remotePort, long timeout) {
+		connect(new InetSocketAddress(remoteHost, remotePort), timeout);
 	}
 	
 	public void connect(final SocketAddress remote) {
+		connect(remote, config.getConnectTimeout());
+	}
+	
+	public void connect(final SocketAddress remote, long timeout) {
 		if(inEventLoop()){
-			connReqQueue.add(remote);
+			connReqQueue.add(new ConnectionRequest(remote, timeout));
 			return;
 		}
 		throw new IllegalStateException("Not in event loop");
@@ -151,23 +166,24 @@ public class EventLoop {
 		}
 	}
 	
-	final static SocketChannel openSocketChan(Selector selector, final SocketAddress remote) {
+	final static SocketChannel openSocketChan(Selector selector, ConnectionRequest req) 
+			throws IOException {
 		SocketChannel chan = null;
 		boolean failed = true;
 		try {
+			final int op = SelectionKey.OP_CONNECT;
 			chan = SocketChannel.open();
 			chan.configureBlocking(false);
-			chan.register(selector, SelectionKey.OP_CONNECT);
-			chan.connect(remote);
+			req.chan = chan;
+			chan.register(selector, op, req);
+			chan.connect(req.remote);
 			failed = false;
-		} catch (final IOException e) {
-			log.warn("Can't open channel to "+remote, e);
+			return chan;
 		} finally {
 			if(failed) {
 				IoUtil.close(chan);
 			}
 		}
-		return chan;
 	}
 	
 	protected static Selector openSelector(final Configuration config) {
@@ -359,6 +375,8 @@ public class EventLoop {
 		
 		final void cleanup(){
 			destroyChans();
+			eventLoop.connReqQueue.clear();
+			eventLoop.timeTaskQueue.clear();
 			config.getBufferStore().close();
 			config.getBufferPool().close();
 		}
@@ -384,13 +402,22 @@ public class EventLoop {
 		}
 		
 		final void handleConnRequests() {
-			Queue<SocketAddress> queue = eventLoop.connReqQueue;
+			final Queue<ConnectionRequest> queue = eventLoop.connReqQueue;
 			for(;;) {
-				final SocketAddress remote = queue.poll();
-				if(remote == null) {
+				final ConnectionRequest req = queue.poll();
+				if(req == null) {
 					break;
 				}
-				openSocketChan(selector, remote);
+				SocketChannel chan = null;
+				try {
+					req.manager = clientSessManager;
+					chan = openSocketChan(selector, req);
+					if(req.timeout > 0L) {
+						eventLoop.schedule(req);
+					}
+				} catch (final Throwable cause) {
+					clientSessManager.allocateSession(chan, cause);
+				}
 			}
 		}
 		
@@ -400,7 +427,7 @@ public class EventLoop {
 		
 		final void onUncaught(SelectionKey selKey, final Throwable cause) {
 			final Object attach = selKey.attachment();
-			if(attach == null){
+			if(!(attach instanceof Session)){
 				final SelectableChannel chan = selKey.channel();
 				IoUtil.close(chan);
 				log.warn("Uncaught exception occurs", cause);
@@ -454,7 +481,15 @@ public class EventLoop {
 		
 		final void onClientConnect(final SelectionKey key) {
 			final SocketChannel chan = (SocketChannel)key.channel();
+			final Object attach = key.attachment();
+			// Cancel connection timeout handler
+			if(attach instanceof ConnectionRequest) {
+				final ConnectionRequest req = (ConnectionRequest)attach;
+				req.cancel();
+				key.attach(null);
+			}
 			final Session sess = clientSessManager.allocateSession(chan);
+			key.attach(sess);
 			if(sess != null){
 				sess.fireConnected();
 			}
@@ -517,7 +552,11 @@ public class EventLoop {
 		 * 
 		 * @return the session, or null if failed
 		 */
-		final Session allocateSession(final SocketChannel chan){
+		final Session allocateSession(final SocketChannel chan) {
+			return allocateSession(chan, null);
+		}
+		
+		final Session allocateSession(final SocketChannel chan, final Throwable cause){
 			final Configuration config = eventLoop.config;
 			Session sess = null;
 			try {
@@ -530,8 +569,12 @@ public class EventLoop {
 				sess.setTimeoutHandler(new IdleStateHandler(readTimeout, writeTimeout));
 				
 				sessionInitializer.initSession(sess);
-			}catch(final Throwable cause) {
-				log.error("Initialize session error", cause);
+				if(cause != null) {
+					sess.fireCause(cause);
+					return null;
+				}
+			}catch(final Throwable e) {
+				log.error("Initialize session error", e);
 				IoUtil.close(sess);
 				return null;
 			}
@@ -552,8 +595,8 @@ public class EventLoop {
 				if(config.isAutoRead()) {
 					sess.enableRead();
 				}
-			} catch (final IOException cause) {
-				sess.fireCause(cause);
+			} catch (final IOException e) {
+				sess.fireCause(e);
 				return null;
 			}
 			
@@ -593,6 +636,32 @@ public class EventLoop {
 							name, session, sessIndex, maxIndex);
 				}
 			}
+		}
+		
+	}
+	
+	// connection request and timeout handler.
+	// @since 2018-07-01 little-pan
+	static class ConnectionRequest extends TimeTask {
+		final SocketAddress remote;
+		final long timeout;
+		
+		SocketChannel chan;
+		SessionManager manager;
+		
+		ConnectionRequest(SocketAddress remote, long timeout) {
+			super(timeout, 0L);
+			this.remote  = remote;
+			this.timeout = timeout;
+		}
+		
+		@Override
+		public void run() {
+			IoUtil.close(chan);
+			final String error = "Connection timed out: remote " + remote;
+			final SocketException cause = new ConnectException(error);
+			manager.allocateSession(chan, cause);
+			this.cancel();
 		}
 		
 	}

@@ -10,9 +10,13 @@ public class Configuration {
 	private String host  = "0.0.0.0";
 	private int port     = 9696;
 	private int backlog  = 1024;
+	
+	// resource limit
 	private int maxConns = 10240, maxServerConns, maxClientConns;
 	private int maxReadBuffers = 8, maxWriteBuffers = 64, writeSpinCount = 16;
-	private long readTimeout = 30000L, writeTimeout = 60000L;
+	
+	// timeout settings
+	private long connectTimeout = 30000L, readTimeout = 30000L, writeTimeout = 60000L;
 	
 	private boolean autoRead     = true;
 	private boolean bufferDirect = true;
@@ -136,6 +140,10 @@ public class Configuration {
 		return writeSpinCount;
 	}
 	
+	public long getConnectTimeout() {
+		return connectTimeout;
+	}
+	
 	public long getReadTimeout() {
 		return readTimeout;
 	}
@@ -247,6 +255,11 @@ public class Configuration {
 		
 		public Builder setEventLoopListener(EventLoopListener eventLoopListener){
 			config.eventLoopListener = eventLoopListener;
+			return this;
+		}
+		
+		public Builder setConnectTimeout(long connectTimeout) {
+			config.connectTimeout = connectTimeout;
 			return this;
 		}
 		

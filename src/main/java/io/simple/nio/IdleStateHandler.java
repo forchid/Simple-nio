@@ -93,7 +93,7 @@ public class IdleStateHandler extends EventHandlerAdapter {
 				}
 			}else {
 				if(this.readTimeTask != null) {
-					this.readTimeTask.cancel();
+					context.session().cancel(this.readTimeTask);
 					this.readTimeTask = null;
 				}
 			}
@@ -109,7 +109,7 @@ public class IdleStateHandler extends EventHandlerAdapter {
 				}
 			}else {
 				if(this.writeTimeTask != null) {
-					this.writeTimeTask.cancel();
+					context.session().cancel(this.writeTimeTask);
 					this.writeTimeTask = null;
 				}
 			}

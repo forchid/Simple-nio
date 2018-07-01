@@ -256,8 +256,15 @@ public class Session implements Closeable {
 	 * @throws IOException 
 	 */
 	public Session write(byte b[]) throws IOException {
+		ensureOpen();
 		out.write(b);
 		return this;
+	}
+	
+	final void ensureOpen() throws IOException {
+		if(!isOpen()) {
+			throw new ClosedChannelException();
+		}
 	}
 	
 	/**
@@ -271,6 +278,7 @@ public class Session implements Closeable {
 	 * @throws IOException 
 	 */
 	public Session write(byte b[], int off, int len) throws IOException {
+		ensureOpen();
 		out.write(b, off, len);
 		return this;
 	}
@@ -283,6 +291,7 @@ public class Session implements Closeable {
 	 * @throws IOException 
 	 */
 	public Session write(ByteBuffer buf) throws IOException {
+		ensureOpen();
 		for(;buf.hasRemaining();) {
 			out.write(buf.get());
 		}
@@ -300,6 +309,7 @@ public class Session implements Closeable {
 	 * @throws IOException 
 	 */
 	public Session write(ByteBuffer buf, int off, int len) throws IOException {
+		ensureOpen();
 		for(;off < len;) {
 			out.write(buf.get(off++));
 		}
@@ -329,7 +339,7 @@ public class Session implements Closeable {
 		head.fireFlushed();
 	}
 	
-	public Session cancel(TimeTask task) {
+	public Session cancel(final TimeTask task) {
 		try {
 			final Iterator<TimeTask> i = timeTasks.iterator();
 			for(;i.hasNext();) {

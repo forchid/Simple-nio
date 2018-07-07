@@ -34,6 +34,7 @@ public class BufferInputStream extends InputStream {
 	protected final Session session;
 	protected ArrayQueue<Buffer> localPool;
 	private int available, maxBuffers;
+	private boolean eof;
 	
 	// mark support
 	private int markPos = -1, readLimit;
@@ -85,7 +86,7 @@ public class BufferInputStream extends InputStream {
 				final int i = chan.read(b);
 				b.flip();
 				if(i == -1) {
-					// EOF
+					this.eof = true;
 					return -1;
 				}
 				if(i == 0) {
@@ -203,6 +204,7 @@ public class BufferInputStream extends InputStream {
 				}
 				
 				if(i <= 0 || buffers >= maxBuffers) {
+					this.eof = (i == -1);
 					if(oldAvailable != available) {
 						try {
 							session.fireReadComplete();
@@ -325,5 +327,12 @@ public class BufferInputStream extends InputStream {
 		available += (buf.position() - markPos);
 		buf.position(markPos);
     }
+	
+	/**
+	 * @return true if has reached the end-of-stream
+	 */
+	public final boolean eof() {
+		return eof;
+	}
 
 }

@@ -10,7 +10,7 @@ public interface EventHandler {
 	 */
 	void onConnected(HandlerContext ctx)throws Exception;
 	
-	void onRead(HandlerContext ctx, Object in)throws Exception;
+	void onRead(HandlerContext ctx, Object msg)throws Exception;
 	
 	/**
 	 * Invoked after read more data from channel.
@@ -18,7 +18,7 @@ public interface EventHandler {
 	 */
 	void onReadComplete(HandlerContext ctx)throws Exception;
 
-	void onWrite(HandlerContext ctx, Object out)throws Exception;
+	void onWrite(HandlerContext ctx, Object msg)throws Exception;
 	
 	void onFlushed(HandlerContext ctx)throws Exception;
 	

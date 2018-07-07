@@ -10,8 +10,8 @@ public class EventHandlerAdapter implements EventHandler {
 	}
 
 	@Override
-	public void onRead(HandlerContext ctx, Object in) throws Exception {
-		ctx.fireRead(in);
+	public void onRead(HandlerContext ctx, Object msg) throws Exception {
+		ctx.fireRead(msg);
 	}
 	
 	@Override
@@ -20,8 +20,8 @@ public class EventHandlerAdapter implements EventHandler {
 	}
 
 	@Override
-	public void onWrite(HandlerContext ctx, Object out) throws Exception {
-		ctx.fireWrite(out);
+	public void onWrite(HandlerContext ctx, Object msg) throws Exception {
+		ctx.fireWrite(msg);
 	}
 
 	@Override

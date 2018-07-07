@@ -122,8 +122,9 @@ public class HandlerContext implements Closeable {
 	 * Flush output buffer stream into the socket channel.
 	 * Please see {@link Session#flush()} method.
 	 * </p>
+	 * @throws Exception 
 	 */
-	public HandlerContext flush() {
+	public HandlerContext flush() throws Exception {
 		session.flush();
 		return this;
 	}
@@ -132,43 +133,43 @@ public class HandlerContext implements Closeable {
 		session.close();
 	}
 
-	public void fireConnected(){
+	public void fireConnected() throws Exception {
 		if(next != null){
 			next.handler.onConnected(next);
 		}
 	}
 	
-	public void fireRead(Object in){
+	public void fireRead(Object in) throws Exception {
 		if(next != null){
 			next.handler.onRead(next, in);
 		}
 	}
 	
-	public void fireReadComplete() {
+	public void fireReadComplete() throws Exception {
 		if(next != null){
 			next.handler.onReadComplete(next);
 		}
 	}
 	
-	public void fireWrite(Object out){
+	public void fireWrite(Object out) throws Exception {
 		if(prev != null){
 			prev.handler.onWrite(prev, out);
 		}
 	}
 	
-	public void fireFlushed(){
+	public void fireFlushed() throws Exception {
 		if(next != null){
 			next.handler.onFlushed(next);
 		}
 	}
 	
-	public void fireUserEvent(Object ev) {
+	public void fireUserEvent(Object ev) throws Exception {
 		if(next != null){
 			next.handler.onUserEvent(next, ev);
 		}
 	}
 	
-	public void fireCause(Throwable cause){
+	public void fireCause(Throwable cause) {
 		if(next != null){
 			next.handler.onCause(next, cause);
 		}

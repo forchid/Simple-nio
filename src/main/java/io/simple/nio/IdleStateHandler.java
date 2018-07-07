@@ -1,5 +1,8 @@
 package io.simple.nio;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * <p>
  * Idle state event handler.
@@ -25,7 +28,7 @@ public class IdleStateHandler extends EventHandlerAdapter {
 	}
 	
 	@Override
-	public void onConnected(HandlerContext ctx) {
+	public void onConnected(HandlerContext ctx) throws Exception {
 		if(this.context == null) {
 			this.context = ctx;
 			schedule(IdleState.READ_IDLE);
@@ -35,7 +38,7 @@ public class IdleStateHandler extends EventHandlerAdapter {
 	}
 	
 	@Override
-	public void onReadComplete(HandlerContext ctx) {
+	public void onReadComplete(HandlerContext ctx) throws Exception {
 		try {
 			if(readIdleTime <= 0L) {
 				return;
@@ -48,7 +51,7 @@ public class IdleStateHandler extends EventHandlerAdapter {
 	}
 	
 	@Override
-	public void onFlushed(HandlerContext ctx) {
+	public void onFlushed(HandlerContext ctx) throws Exception {
 		try {
 			if(writeIdleTime <= 0L) {
 				return;
@@ -121,6 +124,7 @@ public class IdleStateHandler extends EventHandlerAdapter {
 	
 	// Read or write idle time task.
 	static class IdleTimeTask extends TimeTask {
+		final static Logger log = LoggerFactory.getLogger(IdleTimeTask.class);
 		
 		final IdleStateHandler handler;
 		final IdleState state;
@@ -133,7 +137,11 @@ public class IdleStateHandler extends EventHandlerAdapter {
 		
 		@Override
 		public void run() {
-			handler.onUserEvent(handler.context, state);
+			try {
+				handler.onUserEvent(handler.context, state);
+			} catch (final Throwable cause) {
+				handler.onCause(handler.context, cause);
+			}
 		}
 		
 	}

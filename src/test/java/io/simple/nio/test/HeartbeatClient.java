@@ -1,7 +1,5 @@
 package io.simple.nio.test;
 
-import java.io.IOException;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,39 +19,31 @@ public class HeartbeatClient extends EventHandlerAdapter {
 	final byte[] ping = "ping".getBytes();
 	
 	@Override
-	public void onRead(HandlerContext ctx, Object o) {
+	public void onRead(HandlerContext ctx, Object o) throws Exception {
 		final BufferInputStream in = (BufferInputStream)o;
-		try {
-			final int n = in.available();
-			if(n < 4) {
-				return;
-			}
-			
-			final byte[] ping = new byte[4];
-			in.read(ping);
-			log.info("{}: recv heartbeat - {}", ctx.session(), new String(ping));
-		}catch(IOException e) {
-			onCause(ctx, e);
+		final int n = in.available();
+		if(n < 4) {
+			return;
 		}
+		
+		final byte[] ping = new byte[4];
+		in.read(ping);
+		log.info("{}: recv heartbeat - {}", ctx.session(), new String(ping));
 	}
 	
 	@Override
-	public void onUserEvent(HandlerContext ctx, Object ev) {
+	public void onUserEvent(HandlerContext ctx, Object ev) throws Exception {
 		log.info("{}: user event - {}", ctx.session(), ev);
-		try {
-			if(ev instanceof IdleState) {
-				final IdleState state = (IdleState)ev;
-				if(IdleState.WRITE_IDLE == state) {
-					log.info("{}: write timeout  - close", ctx.session());
-					ctx.close();
-					return;
-				}
-				ctx.write(ping)
-				.flush();
+		if(ev instanceof IdleState) {
+			final IdleState state = (IdleState)ev;
+			if(IdleState.WRITE_IDLE == state) {
+				log.info("{}: write timeout  - close", ctx.session());
+				ctx.close();
 				return;
 			}
-		}catch(IOException e) {
-			onCause(ctx, e);
+			ctx.write(ping)
+			.flush();
+			return;
 		}
 	}
 	

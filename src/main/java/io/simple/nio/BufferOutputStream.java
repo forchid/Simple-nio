@@ -62,12 +62,6 @@ public class BufferOutputStream extends OutputStream {
 		this.maxBuffers = maxBuffers;
 	}
 	
-	@Override
-	public void write(int b) throws IOException {
-		tailBuffer().put((byte)b);
-		++remaining;
-	}
-	
 	protected ByteBuffer tailBuffer() throws IOException {
 		if(regionBuffer != null){
 			return flushRegion();
@@ -142,12 +136,18 @@ public class BufferOutputStream extends OutputStream {
 	}
 	
 	@Override
+	public void write(int b) throws IOException {
+		tailBuffer().put((byte)b);
+		++remaining;
+	}
+	
+	@Override
 	public void write(byte b[]) throws IOException {
         write(b, 0, b.length);
     }
 	
 	@Override
-	public void write(byte b[], int off, int len) throws IOException {
+	public void write(byte b[], final int off, final int len) throws IOException {
         if (b == null) {
             throw new NullPointerException();
         } else if ((off < 0) || (off > b.length) || (len < 0) ||
@@ -157,8 +157,15 @@ public class BufferOutputStream extends OutputStream {
             return;
         }
         
-        for (int i = 0 ; i < len ; i++) {
-            write(b[off + i]);
+        ByteBuffer buf = tailBuffer();
+        for (int i = 0, n = 0; i < len; i += n) {
+        	final int rem = buf.remaining();
+        	if(rem == 0) {
+        		buf = tailBuffer();
+        	}
+        	n = Math.min(rem, len-i);
+        	buf.put(b, off + i, n);
+        	remaining += n;
         }
     }
 	

@@ -28,30 +28,25 @@ public class EchoServer extends EventHandlerAdapter {
 	}
 
 	@Override
-	public void onRead(HandlerContext ctx, Object o) {
+	public void onRead(HandlerContext ctx, Object o) throws Exception {
 		final Session session = ctx.session();
-		try {
-			final BufferInputStream in = (BufferInputStream)o;
-			final int n = in.available();
-			log.debug("{}: recv bytes {} ->", session, n);
-			if(n == 0) {
-				session.close();
-				return;
-			}
-			final byte[] buf = new byte[n];
-			final int count  = in.read(buf);
-			if(count != n) {
-				throw new IOException("Read bytes too short");
-			}
-			log.debug("{}: recv bytes {} <-", session, count);
-			
-			// echo
-			ctx.write(buf)
-			.flush();
-			
-		} catch (IOException e) {
+		final BufferInputStream in = (BufferInputStream)o;
+		final int n = in.available();
+		log.debug("{}: recv bytes {} ->", session, n);
+		if(n == 0) {
 			session.close();
+			return;
 		}
+		final byte[] buf = new byte[n];
+		final int count  = in.read(buf);
+		if(count != n) {
+			throw new IOException("Read bytes too short");
+		}
+		log.debug("{}: recv bytes {} <-", session, count);
+		
+		// echo
+		ctx.write(buf)
+		.flush();
 	}
 	
 	static class ServerInitializer implements SessionInitializer {

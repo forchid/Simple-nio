@@ -1,7 +1,5 @@
 package io.simple.nio.test;
 
-import java.io.IOException;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,29 +17,25 @@ public class HeartbeatServer extends EventHandlerAdapter {
 	final byte[] pong = "pong".getBytes();
 	
 	@Override
-	public void onRead(HandlerContext ctx, Object o) {
+	public void onRead(HandlerContext ctx, Object o) throws Exception {
 		final BufferInputStream in = (BufferInputStream)o;
-		try {
-			final int n = in.available();
-			if(n < 4) {
-				return;
-			}
-			
-			final byte[] ping = new byte[4];
-			in.read(ping);
-			if(new String(ping).equalsIgnoreCase("ping")) {
-				ctx.write(pong)
-				.flush();
-				return;
-			}
-			ctx.close();
-		}catch(IOException e) {
-			ctx.close();
+		final int n = in.available();
+		if(n < 4) {
+			return;
 		}
+		
+		final byte[] ping = new byte[4];
+		in.read(ping);
+		if(new String(ping).equalsIgnoreCase("ping")) {
+			ctx.write(pong)
+			.flush();
+			return;
+		}
+		ctx.close();
 	}
 	
 	@Override
-	public void onUserEvent(HandlerContext ctx, Object ev) {
+	public void onUserEvent(HandlerContext ctx, Object ev) throws Exception {
 		ctx.fireUserEvent(ev);
 	}
 	

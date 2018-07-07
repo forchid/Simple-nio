@@ -30,10 +30,6 @@ import io.simple.util.ArrayQueue;
 public class BufferInputStream extends InputStream {
 	final static Logger log = LoggerFactory.getLogger(BufferInputStream.class);
 	
-	// MAX_SKIP_BUFFER_SIZE is used to determine the maximum buffer size to
-    // use when skipping.
-    private static final int MAX_SKIP_BUFFER_SIZE = 2048;
-    
     // channel and buffers
 	protected final Session session;
 	protected ArrayQueue<Buffer> localPool;
@@ -75,13 +71,13 @@ public class BufferInputStream extends InputStream {
 	@Override
 	public int read() throws IOException {
 		final SocketChannel chan= session.channel();
-		final ByteBuffer buffer = tailBuffer();
+		final ByteBuffer buffer = headBuffer();
 		if(!buffer.hasRemaining()) {
 			final ByteBuffer b;
-			localPool.pollLast().release();
+			localPool.poll().release();
 			// next buffer
 			final int n = available();
-			b = tailBuffer();
+			b = headBuffer();
 			markPos = -1;
 			if(n == 0) {
 				// no byte readable or EOF
@@ -123,7 +119,7 @@ public class BufferInputStream extends InputStream {
             return 0;
         }
 
-        int c = read();
+        final int c = read();
         if (c == -1) {
             return c;
         }
@@ -131,34 +127,40 @@ public class BufferInputStream extends InputStream {
         
         final int size = Math.min(len, available + 1/*prev byte*/);
         int i = 1;
-        for (; i < size ; i++) {
-            c = read();
-            if (c == -1) {
-                break;
-            }
-            b[off + i] = (byte)c;
+        ByteBuffer buf = headBuffer();
+        for (int n = 0; i < size ; i += n) {
+        	final int rem = buf.remaining();
+        	if(rem == 0) {
+        		buf = headBuffer();
+        		markPos = -1;
+        	}
+        	n = Math.min(rem, size-i);
+        	buf.get(b, off + i, n);
+        	available -= n;
         }
         return i;
     }
 
 	@Override
-	public long skip(long n) throws IOException {
-        long rem = Math.min(n, available());
-        if (rem <= 0L) {
+	public long skip(final long n) throws IOException {
+        final int size = (int)Math.min(n, available());
+        if (size <= 0) {
             return 0L;
         }
 
-        final int size = (int)Math.min(MAX_SKIP_BUFFER_SIZE, rem);
-        final byte[] skipBuffer = new byte[size];
-        for (; rem > 0; ) {
-            final int nr = read(skipBuffer, 0, (int)Math.min(size, rem));
-            if (nr < 0) {
-                break;
-            }
-            rem -= nr;
+        ByteBuffer buf = headBuffer();
+        for (int i = 0, j = 0; i < size; i += j) {
+        	final int rem = buf.remaining();
+        	if(rem == 0) {
+        		buf = headBuffer();
+        		markPos = -1;
+        	}
+        	j = Math.min(rem, size-i);
+        	buf.position(buf.position() + j);
+        	available -= j;
         }
 
-        return n - rem;
+        return n - size;
     }
 	
 	@Override
@@ -166,7 +168,7 @@ public class BufferInputStream extends InputStream {
 		// limit read rate since 2018-06-24 little-pan
 		int buffers = calcBuffers();
 		if(buffers >= maxBuffers && available > 0) {
-			final ByteBuffer b = localPool.peek().byteBuffer();
+			final ByteBuffer b = localPool.peekLast().byteBuffer();
 			if(b.limit() == b.capacity()) {
 				log.debug("Don't read from channel - reach maxBuffers = {}, buffers = {}, available = {}",
 						maxBuffers, buffers, available);
@@ -177,7 +179,7 @@ public class BufferInputStream extends InputStream {
 		final SocketChannel chan = session.channel();
 		final int oldAvailable   = available;
 		// prepare for channel read
-		final ByteBuffer buffer  = headBuffer();
+		final ByteBuffer buffer  = tailBuffer();
 		final int cap = buffer.capacity();
 		final int pos = buffer.position();
 		final int lim = buffer.limit();
@@ -202,7 +204,14 @@ public class BufferInputStream extends InputStream {
 				
 				if(i <= 0 || buffers >= maxBuffers) {
 					if(oldAvailable != available) {
-						session.fireReadComplete();
+						try {
+							session.fireReadComplete();
+						}catch(final Exception e) {
+							if(e instanceof RuntimeException) {
+								throw (RuntimeException)e;
+							}
+							throw new RuntimeException(e);
+						}
 					}
 					return available;
 				}
@@ -230,8 +239,8 @@ public class BufferInputStream extends InputStream {
 	 * 
 	 * @return byte buffer
 	 */
-	protected ByteBuffer tailBuffer() {
-		final Buffer buf = localPool.peekLast();
+	protected ByteBuffer headBuffer() {
+		final Buffer buf = localPool.peek();
 		if(buf == null) {
 			return allocate();
 		}
@@ -243,8 +252,8 @@ public class BufferInputStream extends InputStream {
 	 * 
 	 * @return byte buffer
 	 */
-	protected ByteBuffer headBuffer() {
-		final Buffer buf = localPool.peek();
+	protected ByteBuffer tailBuffer() {
+		final Buffer buf = localPool.peekLast();
 		if(buf == null) {
 			return allocate();
 		}
@@ -267,7 +276,7 @@ public class BufferInputStream extends InputStream {
 		final Buffer newBuf = session.alloc();
 		boolean failed = true;
 		try {
-			localPool.offerFirst(newBuf);
+			localPool.offer(newBuf);
 			final ByteBuffer b = newBuf.byteBuffer();
 			// keep user read state
 			b.flip();
@@ -304,7 +313,7 @@ public class BufferInputStream extends InputStream {
 	@Override
 	public void mark(int readlimit) {
 		this.readLimit = readlimit;
-		this.markPos   = tailBuffer().position();
+		this.markPos   = headBuffer().position();
 	}
 	
 	@Override
@@ -312,7 +321,9 @@ public class BufferInputStream extends InputStream {
 		if(markPos < 0) {
 			throw new IOException("Resetting to invalid mark");
 		}
-		tailBuffer().position(markPos);
+		final ByteBuffer buf = headBuffer();
+		available += (buf.position() - markPos);
+		buf.position(markPos);
     }
 
 }

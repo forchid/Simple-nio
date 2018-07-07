@@ -50,7 +50,8 @@ public class Session implements Closeable {
 	private boolean flushing;
 	
 	// Handler chain
-	private final HandlerContext head, tail;
+	private final HeadContext head;
+	private final TailContext tail;
 	
 	// time task queue
 	private final LinkedList<TimeTask> timeTasks;
@@ -224,22 +225,22 @@ public class Session implements Closeable {
 		return this;
 	}
 	
-	final Session fireConnected(){
+	final Session fireConnected() {
 		head.fireConnected();
 		return this;
 	}
 	
-	final Session fireRead() {
+	final Session fireRead() throws Exception {
 		head.fireRead(in);
 		return this;
 	}
 	
-	final Session fireReadComplete() {
+	final Session fireReadComplete() throws Exception {
 		head.fireReadComplete();
 		return this;
 	}
 	
-	final Session fireWrite(){
+	final Session fireWrite() throws Exception {
 		tail.fireWrite(out);
 		return this;
 	}
@@ -321,8 +322,9 @@ public class Session implements Closeable {
 	 * Flush output buffer stream into the socket channel. First enable channel write, then
 	 * flush stream, and disable channel write after flushing completely.
 	 * </p>
+	 * @throws Exception 
 	 */
-	public final void flush() {
+	public final void flush() throws Exception {
 		flushing = true;
 		if(out.hasRemaining()) {
 			try {
@@ -397,13 +399,32 @@ public class Session implements Closeable {
 		}
 		
 		@Override
-		public void fireRead(final Object in){
+		public void fireConnected() {
+			try {
+				next.handler.onConnected(next);
+			} catch (final Throwable cause) {
+				next.handler.onCause(next, cause);
+			}
+		}
+		
+		@Override
+		public void fireRead(final Object in) throws Exception {
 			final EventHandler handler = next.handler;
 			if(in == null){
 				handler.onRead(next, session.in);
 				return;
 			}
 			handler.onRead(next, in);
+		}
+		
+		@Override
+		public void fireCause(final Throwable cause) {
+			try {
+				next.handler.onCause(next, cause);
+			}catch(final Throwable e) {
+				log.warn("Uncaught exception", e);
+				session.close();
+			}
 		}
 		
 	}
@@ -418,7 +439,7 @@ public class Session implements Closeable {
 		}
 		
 		@Override
-		public void fireWrite(final Object out){
+		public void fireWrite(final Object out) throws Exception {
 			if(session.flushing){
 				session.flush();
 				return;

@@ -28,7 +28,7 @@ public class EchoClient extends EventHandlerAdapter {
 	public EchoClient() {}
 	
 	@Override
-	public void onConnected(HandlerContext ctx) {
+	public void onConnected(HandlerContext ctx) throws Exception {
 		ts = System.currentTimeMillis();
 		log.debug("{}: connected", ctx.session());
 		
@@ -36,55 +36,45 @@ public class EchoClient extends EventHandlerAdapter {
 		for(int i = 0; i < buf.length; ++i){
 			buf[i] = (byte)i;
 		}
-		try {
-			ctx.write(buf)
-			.flush();
-		} catch (IOException e) {
-			log.warn("write error", e);
-			ctx.close();
-		}
+		ctx.write(buf)
+		.flush();
 	}
 	
 	@Override
-	public void onRead(HandlerContext ctx, Object o) {
+	public void onRead(HandlerContext ctx, Object o) throws Exception {
 		final Session session = ctx.session();
-		try {
-			final BufferInputStream in = (BufferInputStream)o;
-			int n = in.available();
-			log.debug("{}: avalable bytes {}", session, n);
-			if(n < buf.length) {
-				if(n == 0) {
-					log.info("{}: Peer closed", session);
-					showTps(session);
-					session.close();
-				}
-				return;
-			}
-			
-			final byte[] buffer = new byte[buf.length];
-			for(int i = 0, size = n/buf.length; i < size; ++i){
-				in.read(buffer);
-				if(Arrays.equals(buffer, buf) == false) {
-					throw new IOException("Protocol error: "+new String(buffer));
-				}
-				ctx.write(buffer);
-				bytes += buf.length;
-				++tps;
-			}
-			
-			if(ctx.isShutdown()){
-				log.info("{}: Client shutdown", session);
+		final BufferInputStream in = (BufferInputStream)o;
+		int n = in.available();
+		log.debug("{}: avalable bytes {}", session, n);
+		if(n < buf.length) {
+			if(n == 0) {
+				log.info("{}: Peer closed", session);
 				showTps(session);
 				session.close();
-				return;
 			}
-			
-			// send
-			ctx.flush();
-			
-		} catch (IOException e) {
-			onCause(ctx, e);
+			return;
 		}
+		
+		final byte[] buffer = new byte[buf.length];
+		for(int i = 0, size = n/buf.length; i < size; ++i){
+			in.read(buffer);
+			if(Arrays.equals(buffer, buf) == false) {
+				throw new IOException("Protocol error: "+new String(buffer));
+			}
+			ctx.write(buffer);
+			bytes += buf.length;
+			++tps;
+		}
+		
+		if(ctx.isShutdown()){
+			log.info("{}: Client shutdown", session);
+			showTps(session);
+			session.close();
+			return;
+		}
+		
+		// send
+		ctx.flush();
 	}
 	
 	@Override
@@ -127,13 +117,11 @@ public class EchoClient extends EventHandlerAdapter {
 			.setClientInitializer(new ClientInitializer())
 			.setName("echo-client")
 			.setBufferDirect(true)
-			.setBufferSize(128)
-			.setMaxWriteBuffers(1)
 			.boot();
 		
 		// Shutdown process
 		// @since 2018-06-27 little-pan
-		Thread.sleep(60000L);
+		Thread.sleep(1 * 60000L);
 		log.info("Shutdown echo client");
 		eventLoop.shutdown();
 		eventLoop.awaitTermination();

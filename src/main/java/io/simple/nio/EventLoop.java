@@ -308,9 +308,13 @@ public class EventLoop {
 		}
 		
 		final void executeTimeTasks() {
+			final LinkedList<TimeTask> queue = eventLoop.timeTaskQueue;
+			if(queue.size() == 0) {
+				return;
+			}
+			
 			final long cur = System.currentTimeMillis();
-			final LinkedList<TimeTask> q = eventLoop.timeTaskQueue;
-			final Iterator<TimeTask> i   = q.iterator();
+			final Iterator<TimeTask> i   = queue.iterator();
 			eventLoop.executingTimeTask  = true;
 			try {
 				for(; i.hasNext(); ) {
@@ -346,15 +350,20 @@ public class EventLoop {
 				if(t == null) {
 					break;
 				}
-				q.offer(t);
+				queue.offer(t);
 			}
 			
 		}
 		
 		final long nearestScheduleTime() {
+			final LinkedList<TimeTask> queue = eventLoop.timeTaskQueue;
+			long nearest = -1L;
+			if(queue.size() == 0) {
+				return nearest;
+			}
+			
 			final long cur = System.currentTimeMillis();
-			long nearest   = -1L;
-			final Iterator<TimeTask> i = eventLoop.timeTaskQueue.iterator();
+			final Iterator<TimeTask> i = queue.iterator();
 			for(; i.hasNext(); ) {
 				final TimeTask task = i.next();
 				if(task.isCancel()) {
@@ -403,6 +412,10 @@ public class EventLoop {
 		
 		final void handleConnRequests() {
 			final Queue<ConnectionRequest> queue = eventLoop.connReqQueue;
+			if(queue.size() == 0) {
+				return;
+			}
+			
 			for(;;) {
 				final ConnectionRequest req = queue.poll();
 				if(req == null) {
@@ -455,7 +468,7 @@ public class EventLoop {
 			}
 		}
 		
-		final void onServerConnect(final ServerSocketChannel ssChan){
+		final void onServerConnect(final ServerSocketChannel ssChan) {
 			SocketChannel chan = null;
 			boolean failed = true;
 			try{
@@ -474,7 +487,8 @@ public class EventLoop {
 				}
 			}
 			
-			final Session sess = serverSessManager.allocateSession(chan);
+			Session sess = null;
+			sess = serverSessManager.allocateSession(chan);
 			if(sess != null){
 				sess.fireConnected();
 			}
@@ -496,12 +510,12 @@ public class EventLoop {
 			}
 		}
 		
-		final void onRead(SelectionKey key) {
+		final void onRead(SelectionKey key) throws Exception {
 			final Session sess = (Session)key.attachment();
 			sess.fireRead();
 		}
 		
-		final void onWrite(SelectionKey key) {
+		final void onWrite(SelectionKey key) throws Exception {
 			final Session sess = (Session)key.attachment();
 			sess.fireWrite();
 		}
@@ -557,7 +571,7 @@ public class EventLoop {
 			return allocateSession(chan, null);
 		}
 		
-		final Session allocateSession(final SocketChannel chan, final Throwable cause){
+		final Session allocateSession(final SocketChannel chan, final Throwable cause) {
 			final Configuration config = eventLoop.config;
 			Session sess = null;
 			try {

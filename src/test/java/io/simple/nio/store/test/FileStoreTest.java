@@ -24,15 +24,15 @@ import io.simple.nio.store.FileStore;
  */
 public class FileStoreTest {
 	
-	final static int regionSize = 8;
+	final static int storeSize = 1 << 4, regionSize = 1 << 3;
 	
 	File file;
 	FileStore store;
 	
 	@Before
-	public void init(){
+	public void init() throws IOException {
 		file  = new File("data/store.data");
-		store = FileStore.open("TestStore", file, regionSize);
+		store = FileStore.open("TestStore", file, storeSize, regionSize);
 	}
 	
 	@Test
@@ -189,6 +189,23 @@ public class FileStoreTest {
 		region.release();
 		// throw
 		region.read(ByteBuffer.allocate(regionSize));
+	}
+	
+	@Test
+	public void testAllocateRelease() throws IOException {
+		for(int i = 0, n = 1000 * (storeSize/regionSize); i < n; ++i) {
+			// allocate-release
+			final FileRegion region = store.allocate();
+			region.release();
+		}
+	}
+	
+	@Test(expected = java.io.IOException.class)
+	public void testAllocateFull() throws IOException {
+		for(int i = 0, n = 1000 * (storeSize/regionSize); i < n; ++i) {
+			// allocate-not-release
+			store.allocate();
+		}
 	}
 	
 	@After

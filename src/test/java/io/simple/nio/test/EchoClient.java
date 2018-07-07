@@ -40,6 +40,7 @@ public class EchoClient extends EventHandlerAdapter {
 			ctx.write(buf)
 			.flush();
 		} catch (IOException e) {
+			log.warn("write error", e);
 			ctx.close();
 		}
 	}
@@ -126,6 +127,8 @@ public class EchoClient extends EventHandlerAdapter {
 			.setClientInitializer(new ClientInitializer())
 			.setName("echo-client")
 			.setBufferDirect(true)
+			.setBufferSize(128)
+			.setMaxWriteBuffers(1)
 			.boot();
 		
 		// Shutdown process

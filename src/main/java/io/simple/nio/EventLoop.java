@@ -283,7 +283,7 @@ public class EventLoop {
 									onRead(key);
 								}
 								
-								if(key.isWritable()) {
+								if(key.isValid() && key.isWritable()) {
 									onWrite(key);
 								}
 							}catch(final Throwable cause) {
@@ -427,21 +427,22 @@ public class EventLoop {
 		
 		final void onUncaught(SelectionKey selKey, final Throwable cause) {
 			final Object attach = selKey.attachment();
+			log.warn("Uncaught exception", cause);
+			
 			if(!(attach instanceof Session)){
 				final SelectableChannel chan = selKey.channel();
 				IoUtil.close(chan);
-				log.warn("Uncaught exception occurs", cause);
 				return;
 			}
+			
 			final Session sess = (Session)attach;
 			final StackTraceElement[] stack = cause.getStackTrace();
 			for(int j = 0, size = stack.length; j < size; ++j) {
 				final StackTraceElement e = stack[j];
 				final boolean isSub = Session.class.isAssignableFrom(e.getClass());
 				if(isSub && Session.ON_CAUSE.equals(e.getMethodName())){
-					log.warn("Event handler uncaught error", cause);
 					IoUtil.close(sess);
-					break;
+					return;
 				}
 			}
 			try {

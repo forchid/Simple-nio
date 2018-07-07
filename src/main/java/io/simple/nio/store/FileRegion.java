@@ -15,15 +15,19 @@ import java.nio.channels.WritableByteChannel;
 public class FileRegion {
 	
 	public final FileStore store;
-	public final long id;
+	public final int id;
 	
 	private int readIndex, writeIndex;
 	private boolean released;
 	
-	public FileRegion(final FileStore store, final long id){
+	public FileRegion(final FileStore store, final int id){
 		this.store = store;
 		this.id    = id;
 		this.released = true;
+	}
+	
+	public boolean isReleased() {
+		return released;
 	}
 	
 	protected void onAllocate(){

@@ -10,7 +10,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
-import java.util.LinkedList;
 
 /**
  * The file based storage that manages a pool of {@link FileRegion}.
@@ -22,55 +21,88 @@ import java.util.LinkedList;
 public class FileStore implements Closeable {
 	
 	public final String name;
-	public final int regionSize;
+	public final long storeSize;
+	public final int  regionSize;
 	
 	final File file;
 	final FileChannel chan;
 	
-	private final LinkedList<FileRegion> regionPool;
-	private long maxId, size;
+	private FileRegion regionPool[];
+	private long size;
+	private int maxId;
 	
-	public FileStore(int regionSize){
-		this("FileStore", null, null, regionSize);
+	public FileStore(long storeSize, int regionSize) throws IOException {
+		this("FileStore", null, null, storeSize, regionSize);
 	}
 	
-	public FileStore(String name, int regionSize){
-		this(name, null, null, regionSize);
+	public FileStore(String name, long storeSize, int regionSize) throws IOException {
+		this(name, null, null, storeSize, regionSize);
 	}
 	
-	public FileStore(String name, File file, int regionSize){
-		this(name, file, null, regionSize);
+	public FileStore(String name, File file, long storeSize, int regionSize) throws IOException {
+		this(name, file, null, storeSize, regionSize);
 	}
 
-	public FileStore(String name, File file, String mode, int regionSize){
-		this.file = (file==null?createTempFile():file);
-		this.chan = openChannel(this.file, mode);
-		this.regionPool = new LinkedList<FileRegion>();
-		this.regionSize = regionSize;
-		this.name       = name;
+	public FileStore(String name, File file, String mode, long storeSize, int regionSize) 
+			throws IOException {
+		boolean failed = true;
+		try {
+			final long cap = storeSize / regionSize;
+			if(cap > Integer.MAX_VALUE) {
+				throw new IllegalArgumentException("storeSize can't bigger than " + 
+						((long)Integer.MAX_VALUE * regionSize));
+			}
+			this.file = (file==null?createTempFile():file);
+			this.chan = openChannel(this.file, mode);
+			this.storeSize  = storeSize;
+			this.regionPool = new FileRegion[(int)cap];
+			this.regionSize = regionSize;
+			this.name       = name;
+			failed = false;
+		}finally {
+			if(failed) {
+				IoUtil.close(this.chan);
+				if(file == null && this.file != null) {
+					this.file.delete();
+				}
+			}
+		}
 	}
 	
-	public FileRegion allocate(){
-		FileRegion region = regionPool.poll();
+	public FileRegion allocate() throws IOException {
+		// Sequence allocate and write for performance.
+		// @since 2018-07-07 little-pan
+		final int id;
+		if(maxId == regionPool.length) {
+			// circular
+			id = 0;
+		}else {
+			id = maxId;
+		}
+		
+		FileRegion region = regionPool[id];
+		if(region != null && !region.isReleased()) {
+			throw new IOException("Too many file regions");
+		}
 		if(region == null){
-			final long id = maxId;
 			region = new FileRegion(this, id);
-			++maxId;
+			regionPool[id] = region;
 		}
 		region.onAllocate();
+		
+		maxId = id + 1;
 		return region;
 	}
 	
 	public void release(FileRegion region) {
 		if(region.store == this){
+			final int id  = region.id;
 			region.onRelease();
-			if(region.id == maxId - 1){
-				truncate((maxId-1) * regionSize);
-				--maxId;
-				return;
-			}
-			regionPool.offer(region.clear());
+			region.clear();
+			regionPool[id]= null;
+			return;
 		}
+		throw new IllegalArgumentException(region + ": not in " + this);
 	}
 	
 	public boolean isOpen(){
@@ -120,7 +152,7 @@ public class FileStore implements Closeable {
 	public int read(FileRegion region, ByteBuffer dst) throws IOException {
 		region.checkNotReleased();
 		
-		final int rem = region.writeRemaining();
+		final int rem = region.readRemaining();
 		if(rem == 0){
 			return -1;
 		}
@@ -160,7 +192,11 @@ public class FileStore implements Closeable {
 			src.limit(src.position() + size);
 			final int widx = region.writeIndex();
 			final long position = region.id * regionSize + widx;
-			final int n = chan.write(src, position);
+			int n = 0;
+			// write complete for sequence write
+			for(int i = 0; n < size; n += i) {
+				i = chan.write(src, position + n);
+			}
 			this.size  += n;
 			region.writeIndex(widx + n);
 			return n;
@@ -175,12 +211,13 @@ public class FileStore implements Closeable {
 	
 	@Override
 	public void close(){
-		regionPool.clear();
+		regionPool = null;
+		maxId      = 0;
 		truncate(size = 0L);
 		IoUtil.close(chan);
 		file.delete();
 	}
-	
+
 	protected void truncate(final long size){
 		try {
 			chan.truncate(size);
@@ -194,53 +231,62 @@ public class FileStore implements Closeable {
 		return name;
 	}
 	
-	public static FileStore open(int regionSize){
-		return open(null, null, null, regionSize);
+	public static FileStore open(long storeSize, int regionSize) throws IOException {
+		return open(null, null, null, storeSize, regionSize);
 	}
 	
-	public static FileStore open(String name, int regionSize){
-		return open(name, null, null, regionSize);
+	public static FileStore open(String name, long storeSize, int regionSize) throws IOException {
+		return open(name, null, null, storeSize,  regionSize);
 	}
 	
-	public static FileStore open(String name, File file, int regionSize){
-		return open(name, file, null, regionSize);
+	public static FileStore open(String name, File file, long storeSize, int regionSize) 
+			throws IOException {
+		return open(name, file, null, storeSize, regionSize);
 	}
 	
-	public static FileStore open(String name, File file, String mode, int regionSize){
-		return new FileStore(name, file, mode, regionSize);
+	public static FileStore open(String name, File file, String mode, long storeSize, int regionSize) 
+			throws IOException {
+		return new FileStore(name, file, mode, storeSize, regionSize);
 	}
 	
-	public static FileChannel openChannel(){
+	public static FileChannel openChannel() throws IOException{
 		return openChannel(null, null);
 	}
 	
-	public static FileChannel openChannel(File file){
+	public static FileChannel openChannel(File file) throws IOException {
 		return openChannel(file, null);
 	}
 	
-	public static FileChannel openChannel(File file, String mode){
+	public static FileChannel openChannel(File file, String mode)throws IOException {
+		boolean tmpf = false;
+		if(file == null){
+			file = createTempFile();
+			tmpf = true;
+		}
+		if(mode == null){
+			mode = "rw";
+		}
+		RandomAccessFile raf = null;
+		boolean failed = true;
 		try {
-			if(file == null){
-				file = createTempFile();
+			raf = new RandomAccessFile(file, mode);
+			failed = false;
+			return raf.getChannel();
+		}finally {
+			if(failed) {
+				IoUtil.close(raf);
+				if(failed && tmpf) {
+					file.delete();
+				}
 			}
-			if(mode == null){
-				mode = "rw";
-			}
-			return new RandomAccessFile(file, mode).getChannel();
-		} catch (final IOException e) {
-			throw new RuntimeException(e);
 		}
 	}
 	
-	static File createTempFile(){
+	static File createTempFile() throws IOException {
 		final File f;
-		try{
-			f = File.createTempFile("Simple-nio.", ".tmp");
-			f.deleteOnExit();
-			return f;
-		}catch(final IOException e){
-			throw new RuntimeException(e);
-		}
+		f = File.createTempFile("Simple-nio.", ".tmp");
+		f.deleteOnExit();
+		return f;
 	}
 
 }

@@ -1,8 +1,12 @@
 package io.simple.nio;
 
+import java.io.IOException;
+
 import io.simple.nio.store.FileStore;
+import io.simple.util.IoUtil;
 
 public class Configuration {
+	final static long MAX_STORE_SIZE = 1L << 33;
 	
 	private boolean daemon = false;
 	
@@ -21,7 +25,7 @@ public class Configuration {
 	private boolean autoRead     = true;
 	private boolean bufferDirect = true;
 	private int bufferSize       = BufferPool.DEFAULT_BUFFER_SIZE;
-	private long poolSize        = Runtime.getRuntime().maxMemory()>>1;
+	private long poolSize, storeSize;
 	private BufferPool bufferPool;
 	private FileStore  bufferStore;
 	
@@ -29,6 +33,15 @@ public class Configuration {
 	private SessionInitializer clientInitializer;
 	
 	private EventLoopListener eventLoopListener;
+	
+	{
+		final long max = Runtime.getRuntime().maxMemory();
+		poolSize  = max >> 1;
+		storeSize = max << 1;
+		if(storeSize > MAX_STORE_SIZE) {
+			storeSize = MAX_STORE_SIZE;
+		}
+	}
 	
 	public Configuration() {
 		
@@ -80,6 +93,10 @@ public class Configuration {
 	
 	public long getPoolSize() {
 		return poolSize;
+	}
+	
+	public long getStoreSize() {
+		return storeSize;
 	}
 	
 	public BufferPool getBufferPool() {
@@ -228,6 +245,11 @@ public class Configuration {
 			return this;
 		}
 		
+		public Builder setStoreSize(long storeSize) {
+			config.storeSize = storeSize;
+			return this;
+		}
+		
 		public Builder setMaxReadBuffers(int maxReadBuffers) {
 			config.maxReadBuffers  = maxReadBuffers;
 			return this;
@@ -301,26 +323,45 @@ public class Configuration {
 				throw new IllegalArgumentException("writeSpinCount must bigger than 0: "+config.writeSpinCount);
 			}
 			
-			final long poolSize  = config.poolSize;
 			final int bufferSize = config.bufferSize;
-			config.bufferStore   = FileStore.open("BufferStore", bufferSize);
-			if(config.isBufferDirect()) {
-				config.bufferPool = new ArrayBufferPool(poolSize, bufferSize);
-			}else {
-				config.bufferPool = new SimpleBufferPool(poolSize, bufferSize);
+			final long poolSize  = config.poolSize;
+			final long storeSize = config.storeSize;
+			if(storeSize > MAX_STORE_SIZE) {
+				throw new IllegalArgumentException("storeSize can't bigger than "+MAX_STORE_SIZE+": "+storeSize);
 			}
-			
-			if(config.eventLoopListener == null){
-				config.eventLoopListener = EventLoopListener.NOOP;
+			boolean failed = true;
+			try {
+				try {
+					config.bufferStore   = FileStore.open("BufferStore", storeSize, bufferSize);
+				} catch (final IOException e) {
+					throw new RuntimeException(e);
+				}
+				if(config.isBufferDirect()) {
+					config.bufferPool = new ArrayBufferPool(poolSize, bufferSize);
+				}else {
+					config.bufferPool = new SimpleBufferPool(poolSize, bufferSize);
+				}
+				
+				if(config.eventLoopListener == null){
+					config.eventLoopListener = EventLoopListener.NOOP;
+				}
+				
+				// Create a new config for the building safe
+				this.config = new Configuration();
+				setServerInitializer(config.serverInitializer);
+				setClientInitializer(config.clientInitializer);
+				setEventLoopListener(config.eventLoopListener);
+				
+				failed = false;
+				return config;
+			}finally {
+				if(failed) {
+					IoUtil.close(config.bufferStore);
+					config.bufferStore = null;
+					IoUtil.close(config.bufferPool);
+					config.bufferPool  = null;
+				}
 			}
-			
-			// Create a new config for the building safe
-			this.config = new Configuration();
-			setServerInitializer(config.serverInitializer);
-			setClientInitializer(config.clientInitializer);
-			setEventLoopListener(config.eventLoopListener);
-			
-			return config;
 		}
 		
 		public EventLoop boot() {

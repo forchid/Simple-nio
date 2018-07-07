@@ -126,7 +126,7 @@ public class BufferOutputStream extends OutputStream {
 		}
 	}
 	
-	protected FileRegion allocRegion(){
+	protected FileRegion allocRegion() throws IOException {
 		final FileStore store = session.bufferStore();
 		final FileRegion region = store.allocate();
 		boolean failed = true;
@@ -156,6 +156,7 @@ public class BufferOutputStream extends OutputStream {
         } else if (len == 0) {
             return;
         }
+        
         for (int i = 0 ; i < len ; i++) {
             write(b[off + i]);
         }

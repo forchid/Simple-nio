@@ -10,7 +10,6 @@ import io.simple.nio.BufferInputStream;
 import io.simple.nio.Configuration;
 import io.simple.nio.EventHandlerAdapter;
 import io.simple.nio.EventLoop;
-import io.simple.nio.EventLoopListener;
 import io.simple.nio.HandlerContext;
 import io.simple.nio.Session;
 import io.simple.nio.SessionInitializer;
@@ -89,17 +88,6 @@ public class EchoClient extends EventHandlerAdapter {
 		log.info("{}: tranport bytes {}, tps {}", session, bytes, tps/(tm/1000L));
 	}
 	
-	static class Connector extends EventLoopListener {
-		
-		@Override
-		public void init(EventLoop eventLoop){
-			for(int i = 0, n = 10; i < n; ++i){
-				eventLoop.connect();
-			}
-		}
-		
-	}
-	
 	static class ClientInitializer implements SessionInitializer {
 
 		@Override
@@ -113,11 +101,15 @@ public class EchoClient extends EventHandlerAdapter {
 		final EventLoop eventLoop = Configuration.newBuilder()
 			.setPort(PORT)
 			.setHost(HOST)
-			.setEventLoopListener(new Connector())
 			.setClientInitializer(new ClientInitializer())
 			.setName("echo-client")
 			.setBufferDirect(true)
 			.boot();
+		
+		// Connect to echo server
+		for(int i = 0, n = 10; i < n; ++i) {
+			eventLoop.connect();
+		}
 		
 		// Shutdown process
 		// @since 2018-06-27 little-pan

@@ -36,6 +36,33 @@ public class HandlerContext implements Closeable {
 		return session.eventLoop();
 	}
 	
+	/**
+	 * <p>
+	 * Execute the task in event loop. Thread safe.
+	 * </p>
+	 * 
+	 * @param task
+	 * @return this context
+	 * 
+	 */
+	public HandlerContext execute(Runnable task) {
+		session.execute(task);
+		return this;
+	}
+	
+	/**
+	 * <p>
+	 * Schedule the time task in event loop. Thread safe.
+	 * </p>
+	 * 
+	 * @param task
+	 * @return this context
+	 */
+	public HandlerContext schedule(TimeTask task) {
+		session.schedule(task);
+		return this;
+	}
+	
 	public EventHandler handler(){
 		return handler;
 	}
@@ -174,5 +201,5 @@ public class HandlerContext implements Closeable {
 			next.handler.onCause(next, cause);
 		}
 	}
-
+	
 }

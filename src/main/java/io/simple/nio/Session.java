@@ -357,6 +357,11 @@ public class Session implements Closeable {
 		}
 	}
 	
+	public Session execute(Runnable task) {
+		eventLoop.execute(task);
+		return this;
+	}
+	
 	public Session schedule(TimeTask task) {
 		eventLoop.schedule(task);
 		timeTasks.offer(task);

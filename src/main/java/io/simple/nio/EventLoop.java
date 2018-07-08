@@ -13,8 +13,8 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,17 +32,12 @@ public class EventLoop {
 	private final SelectorLoop selLoop;
 	private final Thread selThread;
 	
-	// connection queue
-	private final Queue<ConnectionRequest> connReqQueue;
-	{
-		connReqQueue = new LinkedList<ConnectionRequest>();
-	}
-	
+	// conn req queue
+	private final Queue<ConnRequest> connReqQueue = new ConcurrentLinkedQueue<ConnRequest>();
 	// time task queue
-	private final LinkedList<TimeTask> timeTaskQueue = new LinkedList<TimeTask>();
-	// used to avoid CME
-	private final LinkedList<TimeTask> backTimeQueue = new LinkedList<TimeTask>();
-	private boolean executingTimeTask;
+	private final Queue<TimeTask> timeTaskQueue = new ConcurrentLinkedQueue<TimeTask>();
+	// exec task queue
+	private final Queue<Runnable> execTaskQueue = new ConcurrentLinkedQueue<Runnable>();
 	
 	public EventLoop(final Configuration config) {
 		ServerSocketChannel ssChan = null;
@@ -100,44 +95,58 @@ public class EventLoop {
 	/**
 	 * Connect to remote host using the host and port of the configuration.
 	 */
-	public void connect() {
-		connect(config.getHost(), config.getPort());
+	public EventLoop connect() {
+		return connect(config.getHost(), config.getPort());
 	}
 	
-	public void connect(long timeout) {
-		connect(config.getHost(), config.getPort(), timeout);
+	public EventLoop connect(long timeout) {
+		return connect(config.getHost(), config.getPort(), timeout);
 	}
 	
-	public void connect(final String remoteHost, int remotePort) {
-		connect(new InetSocketAddress(remoteHost, remotePort), config.getConnectTimeout());
+	public EventLoop connect(final String remoteHost, int remotePort) {
+		return connect(new InetSocketAddress(remoteHost, remotePort), config.getConnectTimeout());
 	}
 	
-	public void connect(final String remoteHost, int remotePort, long timeout) {
-		connect(new InetSocketAddress(remoteHost, remotePort), timeout);
+	public EventLoop connect(final String remoteHost, int remotePort, long timeout) {
+		return connect(new InetSocketAddress(remoteHost, remotePort), timeout);
 	}
 	
-	public void connect(final SocketAddress remote) {
-		connect(remote, config.getConnectTimeout());
+	public EventLoop connect(final SocketAddress remote) {
+		return connect(remote, config.getConnectTimeout());
 	}
 	
-	public void connect(final SocketAddress remote, long timeout) {
-		if(inEventLoop()){
-			connReqQueue.add(new ConnectionRequest(remote, timeout));
-			return;
+	public EventLoop connect(final SocketAddress remote, long timeout) {
+		connReqQueue.offer(new ConnRequest(remote, timeout));
+		if(!inEventLoop()) {
+			selLoop.selector.wakeup();
 		}
-		throw new IllegalStateException("Not in event loop");
+		return this;
 	}
 	
-	public void schedule(TimeTask task) {
-		if(inEventLoop()){
-			if(executingTimeTask) {
-				backTimeQueue.add(task);
-			}else {
-				timeTaskQueue.add(task);
-			}
-			return;
+	/**
+	 * Execute task in event loop.
+	 * 
+	 * @param task
+	 * @return the event loop
+	 * 
+	 * @since 2018-07-08 little-pan
+	 */
+	public EventLoop execute(final Runnable task) {
+		if(inEventLoop()) {
+			task.run();
+			return this;
 		}
-		throw new IllegalStateException("Not in event loop");
+		execTaskQueue.offer(task);
+		selLoop.selector.wakeup();
+		return this;
+	}
+	
+	public EventLoop schedule(final TimeTask task) {
+		timeTaskQueue.offer(task);
+		if(!inEventLoop()) {
+			selLoop.selector.wakeup();
+		}
+		return this;
 	}
 	
 	protected static ServerSocketChannel openServerChan(final Configuration config) {
@@ -166,7 +175,7 @@ public class EventLoop {
 		}
 	}
 	
-	final static SocketChannel openSocketChan(Selector selector, ConnectionRequest req) 
+	final static SocketChannel openSocketChan(Selector selector, ConnRequest req) 
 			throws IOException {
 		SocketChannel chan = null;
 		boolean failed = true;
@@ -295,6 +304,9 @@ public class EventLoop {
 					// 3. handle time events
 					executeTimeTasks();
 					
+					// 4. execute tasks
+					executeTasks();
+					
 				}// loop
 			} catch(final IOException e) {
 				log.error("Selector loop severe error", e);
@@ -307,56 +319,57 @@ public class EventLoop {
 			log.info("Terminated: uptime {}s", (System.currentTimeMillis() -ts)/1000);
 		}
 		
+		final void executeTasks() {
+			final Queue<Runnable> queue = eventLoop.execTaskQueue;
+			if(queue.size() == 0) {
+				return;
+			}
+			
+			final Iterator<Runnable> i = queue.iterator();
+			for(; i.hasNext(); i.remove()) {
+				try {
+					final Runnable task = i.next();
+					task.run();
+				}catch(final Throwable cause) {
+					log.warn("Uncaught exception in task", cause);
+				}
+			}
+		}
+		
 		final void executeTimeTasks() {
-			final LinkedList<TimeTask> queue = eventLoop.timeTaskQueue;
+			final Queue<TimeTask> queue = eventLoop.timeTaskQueue;
 			if(queue.size() == 0) {
 				return;
 			}
 			
 			final long cur = System.currentTimeMillis();
-			final Iterator<TimeTask> i   = queue.iterator();
-			eventLoop.executingTimeTask  = true;
-			try {
-				for(; i.hasNext(); ) {
-					final TimeTask task = i.next();
-					if(task.isCancel()) {
-						i.remove();
-						continue;
-					}
-					final long tm = task.executeTime();
-					if(tm <= cur) {
-						try {
-							task.run();
-						} catch(final Throwable cause){
-							log.debug("Time task execution error", cause);
-						} finally {
-							final long period = task.period();
-							if(period <= 0L) {
-								i.remove();
-							}else {
-								task.executeTime(tm + period);
-							}
+			final Iterator<TimeTask> i = queue.iterator();
+			for(; i.hasNext(); ) {
+				final TimeTask task = i.next();
+				if(task.isCancel()) {
+					i.remove();
+					continue;
+				}
+				final long tm = task.executeTime();
+				if(tm <= cur) {
+					try {
+						task.run();
+					} catch(final Throwable cause){
+						log.debug("Time task execution error", cause);
+					} finally {
+						final long period = task.period();
+						if(period <= 0L) {
+							i.remove();
+						}else {
+							task.executeTime(tm + period);
 						}
 					}
 				}
-			}finally {
-				eventLoop.executingTimeTask = false;
-			}
-			
-			// merge time tasks
-			final LinkedList<TimeTask> b = eventLoop.backTimeQueue;
-			for(;;) {
-				final TimeTask t = b.poll();
-				if(t == null) {
-					break;
-				}
-				queue.offer(t);
-			}
-			
+			} // loop
 		}
 		
 		final long nearestScheduleTime() {
-			final LinkedList<TimeTask> queue = eventLoop.timeTaskQueue;
+			final Queue<TimeTask> queue = eventLoop.timeTaskQueue;
 			long nearest = -1L;
 			if(queue.size() == 0) {
 				return nearest;
@@ -386,6 +399,7 @@ public class EventLoop {
 			destroyChans();
 			eventLoop.connReqQueue.clear();
 			eventLoop.timeTaskQueue.clear();
+			eventLoop.execTaskQueue.clear();
 			config.getBufferStore().close();
 			config.getBufferPool().close();
 		}
@@ -411,13 +425,13 @@ public class EventLoop {
 		}
 		
 		final void handleConnRequests() {
-			final Queue<ConnectionRequest> queue = eventLoop.connReqQueue;
+			final Queue<ConnRequest> queue = eventLoop.connReqQueue;
 			if(queue.size() == 0) {
 				return;
 			}
 			
 			for(;;) {
-				final ConnectionRequest req = queue.poll();
+				final ConnRequest req = queue.poll();
 				if(req == null) {
 					break;
 				}
@@ -498,8 +512,8 @@ public class EventLoop {
 			final SocketChannel chan = (SocketChannel)key.channel();
 			final Object attach = key.attachment();
 			// Cancel connection timeout handler
-			if(attach instanceof ConnectionRequest) {
-				final ConnectionRequest req = (ConnectionRequest)attach;
+			if(attach instanceof ConnRequest) {
+				final ConnRequest req = (ConnRequest)attach;
 				req.cancel();
 				key.attach(null);
 			}
@@ -657,14 +671,14 @@ public class EventLoop {
 	
 	// connection request and timeout handler.
 	// @since 2018-07-01 little-pan
-	static class ConnectionRequest extends TimeTask {
+	static class ConnRequest extends TimeTask {
 		final SocketAddress remote;
 		final long timeout;
 		
 		SocketChannel chan;
 		SessionManager manager;
 		
-		ConnectionRequest(SocketAddress remote, long timeout) {
+		ConnRequest(SocketAddress remote, long timeout) {
 			super(timeout, 0L);
 			this.remote  = remote;
 			this.timeout = timeout;

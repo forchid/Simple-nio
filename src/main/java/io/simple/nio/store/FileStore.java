@@ -76,6 +76,7 @@ public class FileStore implements Closeable {
 		if(maxId == regionPool.length) {
 			// circular
 			id = 0;
+			chan.position(0L);
 		}else {
 			id = maxId;
 		}
@@ -141,11 +142,13 @@ public class FileStore implements Closeable {
 			return 0;
 		}
 		
+		// Random read
 		final int ridx = region.readIndex();
 		final long position = region.id * regionSize + ridx;
 		final int n = (int)chan.transferTo(position, size, dst);
 		this.size  -= n;
 		region.readIndex(ridx + n);
+		
 		return n;
 	}
 	
@@ -192,13 +195,20 @@ public class FileStore implements Closeable {
 			src.limit(src.position() + size);
 			final int widx = region.writeIndex();
 			final long position = region.id * regionSize + widx;
+			
+			// Keep sequence write for performance
+			if(chan.position() != position) {
+				chan.position(position);
+			}
+			
 			int n = 0;
 			// write complete for sequence write
 			for(int i = 0; n < size; n += i) {
-				i = chan.write(src, position + n);
+				i = chan.write(src);
 			}
 			this.size  += n;
 			region.writeIndex(widx + n);
+			
 			return n;
 		}finally{
 			src.limit(lim);

@@ -130,9 +130,11 @@ public class BufferInputStream extends InputStream {
         int i = 1;
         ByteBuffer buf = headBuffer();
         for (int n = 0; i < size ; i += n) {
-        	final int rem = buf.remaining();
+        	int rem = buf.remaining();
         	if(rem == 0) {
+        		localPool.poll().release();
         		buf = headBuffer();
+        		rem = buf.remaining();
         		markPos = -1;
         	}
         	n = Math.min(rem, size-i);
@@ -144,16 +146,18 @@ public class BufferInputStream extends InputStream {
 
 	@Override
 	public long skip(final long n) throws IOException {
-        final int size = (int)Math.min(n, available());
+        final int size = (int)Math.min(n, available);
         if (size <= 0) {
             return 0L;
         }
 
         ByteBuffer buf = headBuffer();
         for (int i = 0, j = 0; i < size; i += j) {
-        	final int rem = buf.remaining();
+        	int rem = buf.remaining();
         	if(rem == 0) {
+        		localPool.poll().release();
         		buf = headBuffer();
+        		rem = buf.remaining();
         		markPos = -1;
         	}
         	j = Math.min(rem, size-i);
